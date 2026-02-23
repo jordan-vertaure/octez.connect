@@ -42,7 +42,7 @@
     "@tezos-x/octez.connect-transport-postmessage": "1.0.0",
     "@tezos-x/octez.connect-types": "1.0.0",
     "@tezos-x/octez.connect-utils": "1.0.0",
-    "@walletconnect/utils": "2.18.0",
+    "@walletconnect/utils": "2.23.6",
     "qrcode-svg": "^1.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -70,7 +70,6 @@
     "rollup": "4.39.0",
     "rollup-plugin-postcss": "^4.0.2",
     "rollup-plugin-string": "^3.0.0",
-    "rollup-plugin-svg": "^2.0.0",
     "rollup-plugin-typescript2": "^0.36.0",
     "vite": "^6.2.6"
   }
