@@ -99,14 +99,21 @@
 }
 
 .alert-logo {
-  margin: 0px 6em;
+  margin: 0px;
   display: flex;
   align-items: center;
   justify-content: center;
+  justify-self: center;
 }
 
-.alert-logo svg {
+.alert-logo svg,
+.alert-logo img {
   height: 28px;
+  margin-left: 0px;
+}
+
+.alert-header .button-icon {
+  margin-left: 0px;
 }
 
 .alert-body {
@@ -149,7 +156,7 @@
 
 @media only screen and (max-width: 800px) {
   .alert-logo {
-    margin: 0px 2em;
+    margin: 0px;
   }
 
   .alert-wrapper-show {
