@@ -84,9 +84,9 @@
 }
 
 .alert-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
   align-items: center;
-  justify-content: space-between;
   padding: 1.8em;
   padding-top: 1.2em;
   padding-bottom: 0px;
@@ -99,15 +99,21 @@
 }
 
 .alert-logo {
-  margin: 0px 6em;
-  margin-left: 30px;
+  margin: 0px;
   display: flex;
   align-items: center;
   justify-content: center;
+  justify-self: center;
 }
 
-.alert-logo svg {
+.alert-logo svg,
+.alert-logo img {
   height: 28px;
+  margin-left: 0px;
+}
+
+.alert-header .button-icon {
+  margin-left: 0px;
 }
 
 .alert-body {
@@ -150,7 +156,7 @@
 
 @media only screen and (max-width: 800px) {
   .alert-logo {
-    margin: 0px 2em;
+    margin: 0px;
   }
 
   .alert-wrapper-show {
