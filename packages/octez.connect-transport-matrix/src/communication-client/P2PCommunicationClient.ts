@@ -235,7 +235,7 @@ export class P2PCommunicationClient extends CommunicationClient {
         return { server: relayServer.server, timestamp: info.timestamp }
       } catch (error) {
         logger.log('getRelayServer', `cached server ${relayServer.server} is unreachable, resetting`)
-        await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e: unknown) => logger.log(e))
+        await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e) => logger.log(e))
         this.relayServer = undefined
         this.selectedRegion = undefined
         // Fall through to discovery below
@@ -259,7 +259,7 @@ export class P2PCommunicationClient extends CommunicationClient {
           return { server: node, timestamp: info.timestamp }
         } catch (error) {
           logger.log('getRelayServer', `stored node ${node} is unreachable, falling through to discovery`)
-          await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e: unknown) => logger.log(e))
+          await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e) => logger.log(e))
         }
       }
 
