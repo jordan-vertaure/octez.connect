@@ -15,7 +15,9 @@ jest.mock('@tezos-x/octez.connect-utils', () => {
         this._resolve = res
         this._reject = rej
       })
-      // Prevent unhandled rejection when promise is rejected without a concurrent awaiter
+      // Prevent Node.js from throwing unhandled promise rejection errors during tests
+      // when the ExposedPromise is rejected before any caller awaits it,
+      // which can occur in error recovery paths
       this.promise.catch(() => {})
     }
     resolve(value: T) {
@@ -144,7 +146,8 @@ describe('P2PCommunicationClient', () => {
 
   describe('getBeaconInfo', () => {
     it('fetches /_synapse/client/beacon/info and maps the response', async () => {
-      ;(axios.get as jest.Mock).mockResolvedValue({
+      const axiosGetMock = axios.get as jest.Mock
+      axiosGetMock.mockResolvedValue({
         data: {
           region: 'eu',
           known_servers: ['a', 'b'],
@@ -178,7 +181,8 @@ describe('P2PCommunicationClient', () => {
       mockStorage.set.mockResolvedValue(undefined)
 
       // First call (stored node) rejects, second call (discovery probe) succeeds
-      ;(axios.get as jest.Mock)
+      const axiosGetMock = axios.get as jest.Mock
+      axiosGetMock
         .mockRejectedValueOnce(new Error('ECONNREFUSED'))
         .mockResolvedValue({
           data: { region: 'eu', known_servers: ['a'], timestamp: 5000 }
@@ -197,7 +201,8 @@ describe('P2PCommunicationClient', () => {
     it('uses stored node when it is reachable', async () => {
       mockStorage.get.mockResolvedValue('healthy-node.papers.tech')
 
-      ;(axios.get as jest.Mock).mockResolvedValue({
+      const axiosGetMock = axios.get as jest.Mock
+      axiosGetMock.mockResolvedValue({
         data: { region: 'eu', known_servers: ['a'], timestamp: 7777 }
       })
 
@@ -214,7 +219,8 @@ describe('P2PCommunicationClient', () => {
       mockStorage.delete.mockResolvedValue(undefined)
 
       // All discovery probes fail
-      ;(axios.get as jest.Mock).mockRejectedValue(new Error('ECONNREFUSED'))
+      const axiosGetMock = axios.get as jest.Mock
+      axiosGetMock.mockRejectedValue(new Error('ECONNREFUSED'))
 
       await expect(freshClient.getRelayServer()).rejects.toThrow()
 
@@ -228,7 +234,8 @@ describe('P2PCommunicationClient', () => {
       mockStorage.delete.mockResolvedValue(undefined)
 
       // First getRelayServer call: no stored node, discovery finds a server
-      ;(axios.get as jest.Mock).mockResolvedValue({
+      const axiosGetMock = axios.get as jest.Mock
+      axiosGetMock.mockResolvedValue({
         data: { region: 'eu', known_servers: ['a'], timestamp: 1000 }
       })
 
@@ -246,7 +253,7 @@ describe('P2PCommunicationClient', () => {
       // The recovery path resets state and retries via findBestRegionAndGetServer(),
       // which probes all servers. Set up the mock so the first call rejects,
       // then all subsequent calls (discovery probes) succeed with a new timestamp.
-      ;(axios.get as jest.Mock)
+      axiosGetMock
         .mockReset()
         .mockRejectedValueOnce(new Error('ETIMEDOUT'))
         .mockResolvedValue({
