@@ -287,7 +287,8 @@ describe('P2PCommunicationClient', () => {
       }
 
       // Both concurrent callers will fail their getBeaconInfo calls
-      // The fix ensures the second caller doesn't orphan the first caller's new promise
+      // The fix ensures callers don't reset this.relayServer if another caller
+      // has already created a new promise instance for retry, preventing orphaned promises
       let firstCallReachedCatch = false
       let secondCallReachedCatch = false
       
@@ -317,11 +318,14 @@ describe('P2PCommunicationClient', () => {
         data: { region: 'us', known_servers: ['b'], timestamp: 3000 }
       })
 
-      // The third call should succeed and not hang
+      // The third call should succeed without hanging (proving no orphaned promises)
       const thirdResult = await freshClient.getRelayServer()
       
+      expect(thirdResult.server).toBeDefined()
       expect(thirdResult.timestamp).toBe(3000)
       expect(firstCallReachedCatch || secondCallReachedCatch).toBe(true)
+      // Both failed calls should have attempted cleanup
+      expect(mockStorage.delete).toHaveBeenCalledWith(StorageKey.MATRIX_SELECTED_NODE)
     })
   })
 
