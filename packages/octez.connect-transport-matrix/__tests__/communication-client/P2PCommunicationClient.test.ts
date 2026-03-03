@@ -265,6 +265,64 @@ describe('P2PCommunicationClient', () => {
       expect(secondResult.timestamp).toBe(2000)
       expect(mockStorage.delete).toHaveBeenCalledWith(StorageKey.MATRIX_SELECTED_NODE)
     })
+
+    it('handles race condition when multiple callers refresh stale timestamp concurrently', async () => {
+      mockStorage.get.mockResolvedValue('')
+      mockStorage.set.mockResolvedValue(undefined)
+      mockStorage.delete.mockResolvedValue(undefined)
+
+      // First getRelayServer call: establish a cached server
+      const axiosGetMock = axios.get as jest.Mock
+      axiosGetMock.mockResolvedValue({
+        data: { region: 'eu', known_servers: ['a'], timestamp: 1000 }
+      })
+
+      await freshClient.getRelayServer()
+
+      // Force the localTimestamp to be old so the stale-timestamp refresh path triggers
+      const relayServerPromise = (freshClient as any).relayServer
+      if (relayServerPromise) {
+        const resolved = await relayServerPromise.promise
+        resolved.localTimestamp = 0
+      }
+
+      // Both concurrent callers will fail their getBeaconInfo calls
+      // The fix ensures the second caller doesn't orphan the first caller's new promise
+      let firstCallReachedCatch = false
+      let secondCallReachedCatch = false
+      
+      axiosGetMock.mockReset()
+      
+      // Create a controlled delay to ensure interleaving
+      axiosGetMock.mockImplementation(() => {
+        return new Promise((resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('ETIMEDOUT'))
+          }, 10)
+        })
+      })
+
+      // Start two concurrent calls
+      const call1 = freshClient.getRelayServer().catch(() => {
+        firstCallReachedCatch = true
+      })
+      const call2 = freshClient.getRelayServer().catch(() => {
+        secondCallReachedCatch = true
+      })
+
+      // After both fail, set up successful discovery
+      await Promise.allSettled([call1, call2])
+      
+      axiosGetMock.mockResolvedValue({
+        data: { region: 'us', known_servers: ['b'], timestamp: 3000 }
+      })
+
+      // The third call should succeed and not hang
+      const thirdResult = await freshClient.getRelayServer()
+      
+      expect(thirdResult.timestamp).toBe(3000)
+      expect(firstCallReachedCatch || secondCallReachedCatch).toBe(true)
+    })
   })
 
   describe('updatePeerRoom', () => {

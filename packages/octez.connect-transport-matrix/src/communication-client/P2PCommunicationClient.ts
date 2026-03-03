@@ -225,6 +225,9 @@ export class P2PCommunicationClient extends CommunicationClient {
         return { server: relayServer.server, timestamp: relayServer.timestamp }
       }
 
+      // Capture the current promise reference before async operations
+      // to prevent race conditions where concurrent callers orphan promises
+      const currentPromise = this.relayServer
       try {
         const info = await this.getBeaconInfo(relayServer.server)
         this.relayServer.resolve({
@@ -236,8 +239,11 @@ export class P2PCommunicationClient extends CommunicationClient {
       } catch (error) {
         logger.log('getRelayServer', `cached server ${relayServer.server} is unreachable, resetting`)
         await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e) => logger.log(e))
-        this.relayServer = undefined
-        this.selectedRegion = undefined
+        // Only reset if this promise instance is still current (not replaced by another caller)
+        if (this.relayServer === currentPromise) {
+          this.relayServer = undefined
+          this.selectedRegion = undefined
+        }
         // Fall through to discovery below
       }
     }
