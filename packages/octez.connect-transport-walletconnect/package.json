@@ -37,10 +37,6 @@
     "@tezos-x/octez.connect-core": "1.0.0",
     "@tezos-x/octez.connect-types": "1.0.0",
     "@tezos-x/octez.connect-utils": "1.0.0",
-    "@walletconnect/sign-client": "2.18.0",
-    "elliptic": "^6.6.1"
-  },
-  "devDependencies": {
-    "@types/elliptic": "^6.4.18"
+    "@walletconnect/sign-client": "2.23.6"
   }
 }
