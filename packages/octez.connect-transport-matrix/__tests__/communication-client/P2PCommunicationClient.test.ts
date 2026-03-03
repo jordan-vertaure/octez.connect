@@ -155,10 +155,9 @@ describe('P2PCommunicationClient', () => {
         }
       })
       const info = await client.getBeaconInfo('relay.test')
-      expect(axios.get).toHaveBeenCalledWith(
-        'https://relay.test/_synapse/client/beacon/info',
-        { timeout: 10_000 }
-      )
+      expect(axios.get).toHaveBeenCalledWith('https://relay.test/_synapse/client/beacon/info', {
+        timeout: 10_000
+      })
       expect(info).toEqual({
         region: 'eu',
         known_servers: ['a', 'b'],
@@ -182,11 +181,9 @@ describe('P2PCommunicationClient', () => {
 
       // First call (stored node) rejects, second call (discovery probe) succeeds
       const axiosGetMock = axios.get as jest.Mock
-      axiosGetMock
-        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
-        .mockResolvedValue({
-          data: { region: 'eu', known_servers: ['a'], timestamp: 5000 }
-        })
+      axiosGetMock.mockRejectedValueOnce(new Error('ECONNREFUSED')).mockResolvedValue({
+        data: { region: 'eu', known_servers: ['a'], timestamp: 5000 }
+      })
 
       const result = await freshClient.getRelayServer()
 
@@ -291,9 +288,9 @@ describe('P2PCommunicationClient', () => {
       // has already created a new promise instance for retry, preventing orphaned promises
       let firstCallReachedCatch = false
       let secondCallReachedCatch = false
-      
+
       axiosGetMock.mockReset()
-      
+
       // Create a controlled delay to ensure interleaving
       axiosGetMock.mockImplementation(() => {
         return new Promise((resolve, reject) => {
@@ -313,14 +310,14 @@ describe('P2PCommunicationClient', () => {
 
       // After both fail, set up successful discovery
       await Promise.allSettled([call1, call2])
-      
+
       axiosGetMock.mockResolvedValue({
         data: { region: 'us', known_servers: ['b'], timestamp: 3000 }
       })
 
       // The third call should succeed without hanging (proving no orphaned promises)
       const thirdResult = await freshClient.getRelayServer()
-      
+
       expect(thirdResult.server).toBeDefined()
       expect(thirdResult.timestamp).toBe(3000)
       expect(firstCallReachedCatch || secondCallReachedCatch).toBe(true)
