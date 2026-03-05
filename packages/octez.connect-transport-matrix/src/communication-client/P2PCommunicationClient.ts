@@ -217,58 +217,114 @@ export class P2PCommunicationClient extends CommunicationClient {
   }
 
   public async getRelayServer(): Promise<{ server: string; timestamp: number }> {
+    // Fast path: in-memory cached relay server that's still fresh
     if (this.relayServer) {
+      const currentPromise = this.relayServer
       const relayServer = await this.relayServer.promise
 
-      // We make sure the locally cached timestamp is not older than 1 minute, if it is, we refresh it
       if (Date.now() - relayServer.localTimestamp < 60 * 1000) {
         return { server: relayServer.server, timestamp: relayServer.timestamp }
       }
 
-      const info = await this.getBeaconInfo(relayServer.server)
-      this.relayServer.resolve({
-        server: relayServer.server,
-        timestamp: info.timestamp,
+      try {
+        const info = await this.getBeaconInfo(relayServer.server)
+        const refreshedPromise = ExposedPromise.resolve({
+          server: relayServer.server,
+          timestamp: info.timestamp,
+          localTimestamp: new Date().getTime()
+        })
+        if (this.relayServer === currentPromise) {
+          this.relayServer = refreshedPromise
+        }
+        return { server: relayServer.server, timestamp: info.timestamp }
+      } catch (error) {
+        logger.log(
+          'getRelayServer',
+          `cached server ${relayServer.server} is unreachable, resetting`
+        )
+        await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e) => logger.log(e))
+        // Only reset if this promise instance is still current (not replaced by another caller)
+        const replacementRelayPromise = this.relayServer
+        if (replacementRelayPromise === currentPromise) {
+          this.relayServer = undefined
+          this.selectedRegion = undefined
+        } else if (replacementRelayPromise) {
+          // Another caller replaced the promise while we were waiting.
+          // Reuse that result instead of racing into a second discovery.
+          const latestRelayServer = await replacementRelayPromise.promise
+          return { server: latestRelayServer.server, timestamp: latestRelayServer.timestamp }
+        }
+        // Fall through to discovery below
+      }
+    }
+
+    // Another caller may have created a new in-flight promise while we were handling stale cache.
+    // Reuse it instead of replacing it with a new promise.
+    if (this.relayServer) {
+      const relayServer = await this.relayServer.promise
+      return { server: relayServer.server, timestamp: relayServer.timestamp }
+    }
+
+    // First caller creates the promise; concurrent callers will await it above
+    const discoveryPromise = new ExposedPromise<{
+      server: string
+      timestamp: number
+      localTimestamp: number
+    }>()
+    this.relayServer = discoveryPromise
+
+    try {
+      // Try the localStorage-cached node first
+      const node = await this.storage.get(StorageKey.MATRIX_SELECTED_NODE)
+      if (node && node.length > 0) {
+        try {
+          const info = await this.getBeaconInfo(node)
+          discoveryPromise.resolve({
+            server: node,
+            timestamp: info.timestamp,
+            localTimestamp: new Date().getTime()
+          })
+          return { server: node, timestamp: info.timestamp }
+        } catch (error) {
+          logger.log(
+            'getRelayServer',
+            `stored node ${node} is unreachable, falling through to discovery`
+          )
+          await this.storage.delete(StorageKey.MATRIX_SELECTED_NODE).catch((e) => logger.log(e))
+        }
+      }
+
+      // Full discovery: probe all servers, pick the fastest
+      const server = await this.findBestRegionAndGetServer()
+
+      if (!server) {
+        throw new Error('No servers found')
+      }
+
+      this.storage
+        .set(StorageKey.MATRIX_SELECTED_NODE, server.server)
+        .catch((error) => logger.log(error))
+
+      discoveryPromise.resolve({
+        server: server.server,
+        timestamp: server.timestamp,
         localTimestamp: new Date().getTime()
       })
-      return { server: relayServer.server, timestamp: info.timestamp }
-    } else {
-      this.relayServer = new ExposedPromise()
+
+      return { server: server.server, timestamp: server.timestamp }
+    } catch (error) {
+      // Always settle the ExposedPromise so concurrent callers don't hang forever
+      discoveryPromise.reject(error)
+      if (this.relayServer === discoveryPromise) {
+        this.relayServer = undefined
+      }
+      throw error
     }
-
-    const node = await this.storage.get(StorageKey.MATRIX_SELECTED_NODE)
-    if (node && node.length > 0) {
-      const info = await this.getBeaconInfo(node)
-      this.relayServer.resolve({
-        server: node,
-        timestamp: info.timestamp,
-        localTimestamp: new Date().getTime()
-      })
-      return { server: node, timestamp: info.timestamp }
-    }
-
-    const server = await this.findBestRegionAndGetServer()
-
-    if (!server) {
-      throw new Error(`No servers found`)
-    }
-
-    this.storage
-      .set(StorageKey.MATRIX_SELECTED_NODE, server.server)
-      .catch((error) => logger.log(error))
-
-    this.relayServer.resolve({
-      server: server.server,
-      timestamp: server.timestamp,
-      localTimestamp: new Date().getTime()
-    })
-
-    return { server: server.server, timestamp: server.timestamp }
   }
 
   public async getBeaconInfo(server: string): Promise<BeaconInfoResponse> {
     return axios
-      .get<BeaconInfoResponse>(`https://${server}/_synapse/client/beacon/info`)
+      .get<BeaconInfoResponse>(`https://${server}/_synapse/client/beacon/info`, { timeout: 10_000 })
       .then((res) => ({
         region: res.data.region,
         known_servers: res.data.known_servers,
@@ -686,12 +742,9 @@ export class P2PCommunicationClient extends CommunicationClient {
         return new Promise((resolve) => {
           // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s, 512s
           const backoffMs = 1000 * Math.pow(2, retry)
-          setTimeout(
-            () => {
-              resolve(this.waitForJoin(roomId, retry + 1))
-            },
-            backoffMs
-          )
+          setTimeout(() => {
+            resolve(this.waitForJoin(roomId, retry + 1))
+          }, backoffMs)
         })
       } else {
         throw new Error(`No one joined after ${retry} tries. Room may be orphaned.`)
@@ -712,7 +765,11 @@ export class P2PCommunicationClient extends CommunicationClient {
       logger.debug(`sendPairingResponse`, `Connecting to room "${roomId}"`)
     } catch (error: any) {
       if (error?.errcode === 'M_FORBIDDEN' && error?.error?.includes('already in the room')) {
-        logger.log(`sendPairingResponse`, `M_FORBIDDEN during room creation, finding existing room instead`, error)
+        logger.log(
+          `sendPairingResponse`,
+          `M_FORBIDDEN during room creation, finding existing room instead`,
+          error
+        )
         roomWasReused = true
         // Handle 403 response when invite was sent. Find the existing room, but first, clear our local state to force a fresh lookup
         const roomIds = await this.storage.get(StorageKey.MATRIX_PEER_ROOM_IDS)
@@ -730,8 +787,14 @@ export class P2PCommunicationClient extends CommunicationClient {
         } catch (innerError: any) {
           // If we still get M_FORBIDDEN here, it means we have orphaned rooms and the state was cleared
           // We need to stop the client and reconnect to get a fresh sync
-          if (innerError?.errcode === 'M_FORBIDDEN' && innerError?.error?.includes('already in the room')) {
-            logger.log(`sendPairingResponse`, `Still getting M_FORBIDDEN after state clear, stopping and restarting client`)
+          if (
+            innerError?.errcode === 'M_FORBIDDEN' &&
+            innerError?.error?.includes('already in the room')
+          ) {
+            logger.log(
+              `sendPairingResponse`,
+              `Still getting M_FORBIDDEN after state clear, stopping and restarting client`
+            )
             await this.stop()
             await this.start()
             // Try one more time with fresh state
@@ -771,7 +834,9 @@ export class P2PCommunicationClient extends CommunicationClient {
       } catch (inviteError) {
         logger.error(`sendPairingResponse`, `Failed to invite recipient to room`, inviteError)
         // If invite fails, we're in a bad state. The user should clear storage.
-        throw new Error('Unable to invite dApp to room. Please clear your browser storage and try again.')
+        throw new Error(
+          'Unable to invite dApp to room. Please clear your browser storage and try again.'
+        )
       }
     } else if (!roomWasReused) {
       // Room was newly created, wait for the other party to join
@@ -779,7 +844,10 @@ export class P2PCommunicationClient extends CommunicationClient {
       logger.debug(`sendPairingResponse`, `Successfully joined room.`)
     } else {
       // Room was reused and recipient is already in it
-      logger.log(`sendPairingResponse`, `Room was reused and recipient is already a member. Sending message immediately.`)
+      logger.log(
+        `sendPairingResponse`,
+        `Room was reused and recipient is already a member. Sending message immediately.`
+      )
     }
 
     // TODO: remove v1 backwards-compatibility
@@ -918,10 +986,17 @@ export class P2PCommunicationClient extends CommunicationClient {
     } else {
       // No relevant rooms found. If we have ignored rooms, we're in a bad state and need to reset.
       if (this.ignoredRooms.length > 0) {
-        logger.log(`getRelevantJoinedRoom`, `no relevant rooms found but have ${this.ignoredRooms.length} ignored rooms, clearing Matrix state`)
+        logger.log(
+          `getRelevantJoinedRoom`,
+          `no relevant rooms found but have ${this.ignoredRooms.length} ignored rooms, clearing Matrix state`
+        )
         // Clear the Matrix preserved state to force a fresh sync on next connection
-        await this.storage.delete(StorageKey.MATRIX_PRESERVED_STATE).catch((error) => logger.log(error))
-        await this.storage.delete(StorageKey.MATRIX_PEER_ROOM_IDS).catch((error) => logger.log(error))
+        await this.storage
+          .delete(StorageKey.MATRIX_PRESERVED_STATE)
+          .catch((error) => logger.log(error))
+        await this.storage
+          .delete(StorageKey.MATRIX_PEER_ROOM_IDS)
+          .catch((error) => logger.log(error))
         // Clear ignored rooms list since we're resetting
         this.ignoredRooms.length = 0
       }
