@@ -84,7 +84,9 @@ test('should display Temple Wallet', async () => {
 
   await dapp.click('h3:has-text("Temple")')
 
-  await dapp.waitForSelector('h3:has-text("Connect with Temple Browser Extension")', {
+  // Temple extension is not installed in the e2e browser, so the correct UI
+  // shows the install prompt rather than the "connect" prompt.
+  await dapp.waitForSelector('h3:has-text("Install Temple Wallet")', {
     state: 'visible',
     timeout: 30_000
   })
