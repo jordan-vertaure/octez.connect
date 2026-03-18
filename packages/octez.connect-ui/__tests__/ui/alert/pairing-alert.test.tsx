@@ -248,6 +248,27 @@ describe('PairingAlert Component', () => {
       expect(clickConnectMock).toHaveBeenCalled()
     })
 
+    test('shows "Connect" and "Use Extension" when extension is detected via firefoxId fallback', async () => {
+      // Simulate the case where the Firefox edition of the extension is installed
+      // (availableExtensions contains an entry whose id matches wallet.firefoxId,
+      // not wallet.id). This exercises the `ext.id === wallet.firefoxId` branch.
+      const clickConnectMock = jest.fn()
+      const walletsMapFirefox = new Map([['wallet1', walletObj]])
+      ;(useWallets as jest.Mock).mockReturnValue({
+        wallets: walletsMapFirefox,
+        availableExtensions: [{ id: 'firefox1', name: 'Wallet One Firefox' }]
+      })
+      const connectReturn = [...defaultUseConnect]
+      connectReturn[3] = 'install'
+      connectReturn[11] = clickConnectMock
+      ;(useConnect as jest.Mock).mockReturnValue(connectReturn)
+      await renderPairingAlert(defaultProps)
+      // firefoxId 'firefox1' matches the detected extension → should show "Use Extension"
+      const useExtensionBtn = screen.getByText('Use Extension')
+      fireEvent.click(useExtensionBtn)
+      expect(clickConnectMock).toHaveBeenCalled()
+    })
+
     test('clicking "Install extension" button calls handleClickInstallExtension when extension is not detected', async () => {
       const walletNoFirefox = { ...walletObj, firefoxId: undefined }
       const walletsMapNoFirefox = new Map([['wallet1', walletNoFirefox]])

@@ -158,6 +158,9 @@ describe('useWallets hook', () => {
       links: ['http://download.desktop'],
       deepLink: 'desktop://app'
     })
+
+    // Verify availableExtensions is returned and contains the mocked extension.
+    expect(result.current.availableExtensions).toEqual([fakeExtension])
   })
 
   test('updates available extensions on "extensionsUpdated" message event', async () => {
@@ -193,6 +196,8 @@ describe('useWallets hook', () => {
     // Wait for the state update after handling the message.
     await waitFor(() => result.current.wallets.has('updatedExt'))
     expect(result.current.wallets.has('updatedExt')).toBe(true)
+    // Verify availableExtensions is updated to reflect the newly detected extension.
+    expect(result.current.availableExtensions).toEqual([updatedExtension])
   })
 
   test('respects networkType parameter for web wallets', async () => {
