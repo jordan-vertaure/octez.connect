@@ -170,7 +170,7 @@ async function renderPairingAlert(props: ConfigurableAlertProps): Promise<Render
 describe('PairingAlert Component', () => {
   beforeEach(() => {
     ;(useIsMobile as jest.Mock).mockReturnValue(false)
-    ;(useWallets as jest.Mock).mockReturnValue(walletsMap)
+    ;(useWallets as jest.Mock).mockReturnValue({ wallets: walletsMap, availableExtensions: [{ id: 'wallet1', name: 'Wallet One' }] })
     ;(useConnect as jest.Mock).mockReturnValue(defaultUseConnect)
     Object.defineProperty(window.navigator, 'onLine', { value: true, writable: true })
     localStorage.clear()
@@ -214,7 +214,7 @@ describe('PairingAlert Component', () => {
     test('renders QR component with isMobile true when wallet.types length equals 1', async () => {
       const iosWallet = { ...walletObj, types: ['ios'] }
       const walletsMapSingle = new Map([['wallet1', iosWallet]])
-      ;(useWallets as jest.Mock).mockReturnValue(walletsMapSingle)
+      ;(useWallets as jest.Mock).mockReturnValue({ wallets: walletsMapSingle, availableExtensions: [] })
       const connectReturn = [...defaultUseConnect]
       connectReturn[0] = iosWallet
       connectReturn[3] = 'install'
@@ -236,7 +236,7 @@ describe('PairingAlert Component', () => {
       expect(newTabMock).toHaveBeenCalled()
     })
 
-    test('clicking "Use Extension" button calls handleClickConnectExtension when firefoxId exists', async () => {
+    test('clicking "Use Extension" button calls handleClickConnectExtension when extension is detected', async () => {
       const clickConnectMock = jest.fn()
       const connectReturn = [...defaultUseConnect]
       connectReturn[3] = 'install'
@@ -248,10 +248,31 @@ describe('PairingAlert Component', () => {
       expect(clickConnectMock).toHaveBeenCalled()
     })
 
-    test('clicking "Install extension" button calls handleClickInstallExtension when firefoxId is missing', async () => {
+    test('shows "Connect" and "Use Extension" when extension is detected via firefoxId fallback', async () => {
+      // Simulate the case where the Firefox edition of the extension is installed
+      // (availableExtensions contains an entry whose id matches wallet.firefoxId,
+      // not wallet.id). This exercises the `ext.id === wallet.firefoxId` branch.
+      const clickConnectMock = jest.fn()
+      const walletsMapFirefox = new Map([['wallet1', walletObj]])
+      ;(useWallets as jest.Mock).mockReturnValue({
+        wallets: walletsMapFirefox,
+        availableExtensions: [{ id: 'firefox1', name: 'Wallet One Firefox' }]
+      })
+      const connectReturn = [...defaultUseConnect]
+      connectReturn[3] = 'install'
+      connectReturn[11] = clickConnectMock
+      ;(useConnect as jest.Mock).mockReturnValue(connectReturn)
+      await renderPairingAlert(defaultProps)
+      // firefoxId 'firefox1' matches the detected extension → should show "Use Extension"
+      const useExtensionBtn = screen.getByText('Use Extension')
+      fireEvent.click(useExtensionBtn)
+      expect(clickConnectMock).toHaveBeenCalled()
+    })
+
+    test('clicking "Install extension" button calls handleClickInstallExtension when extension is not detected', async () => {
       const walletNoFirefox = { ...walletObj, firefoxId: undefined }
       const walletsMapNoFirefox = new Map([['wallet1', walletNoFirefox]])
-      ;(useWallets as jest.Mock).mockReturnValue(walletsMapNoFirefox)
+      ;(useWallets as jest.Mock).mockReturnValue({ wallets: walletsMapNoFirefox, availableExtensions: [] })
       const connectReturn = [...defaultUseConnect]
       connectReturn[0] = walletNoFirefox as any
       connectReturn[3] = 'install'
@@ -391,7 +412,7 @@ describe('PairingAlert Component', () => {
         ['wallet1', walletObj],
         ['wallet2', { ...walletObj }]
       ])
-      ;(useWallets as jest.Mock).mockReturnValue(newWalletsMap)
+      ;(useWallets as jest.Mock).mockReturnValue({ wallets: newWalletsMap, availableExtensions: [] })
       const connectReturn = [...defaultUseConnect]
       connectReturn[3] = 'install'
       const updateStateMock = jest.fn()
@@ -465,7 +486,7 @@ describe('PairingAlert Component', () => {
     test('does not render mobile OS branch when wallet does not include ios', async () => {
       const nonIosWallet = { ...walletObj, types: ['web', 'extension', 'desktop'] }
       const walletsMapNonIos = new Map([['wallet1', nonIosWallet]])
-      ;(useWallets as jest.Mock).mockReturnValue(walletsMapNonIos)
+      ;(useWallets as jest.Mock).mockReturnValue({ wallets: walletsMapNonIos, availableExtensions: [] })
       const connectReturn = [...defaultUseConnect]
       connectReturn[0] = nonIosWallet
       connectReturn[3] = 'install'

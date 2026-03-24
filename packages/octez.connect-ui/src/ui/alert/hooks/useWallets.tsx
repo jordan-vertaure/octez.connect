@@ -102,7 +102,9 @@ const useWallets = (networkType?: NetworkType, featuredWallets?: string[]) => {
   }, [availableExtensions, networkType, featuredWallets])
 
   // Memoize the final Map structure
-  return useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet])), [wallets])
+  const walletsMap = useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet])), [wallets])
+
+  return { wallets: walletsMap, availableExtensions }
 }
 
 export default useWallets

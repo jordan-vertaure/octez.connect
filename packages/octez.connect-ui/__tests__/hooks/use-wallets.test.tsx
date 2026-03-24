@@ -137,10 +137,10 @@ describe('useWallets hook', () => {
 
     // Wait for the async effect (fetching available extensions) to complete.
     await waitFor(() => {
-      expect(result.current.size).toBe(5)
+      expect(result.current.wallets.size).toBe(5)
     })
 
-    const walletMap = result.current
+    const walletMap = result.current.wallets
     expect(walletMap).toBeInstanceOf(Map)
     expect(walletMap.has('desktopWallet')).toBe(true)
     expect(walletMap.has('extWallet')).toBe(true)
@@ -158,6 +158,9 @@ describe('useWallets hook', () => {
       links: ['http://download.desktop'],
       deepLink: 'desktop://app'
     })
+
+    // Verify availableExtensions is returned and contains the mocked extension.
+    expect(result.current.availableExtensions).toEqual([fakeExtension])
   })
 
   test('updates available extensions on "extensionsUpdated" message event', async () => {
@@ -167,10 +170,10 @@ describe('useWallets hook', () => {
     const { result } = renderHook(() => useWallets())
 
     // Wait for the initial effect.
-    await waitFor(() => result.current instanceof Map)
+    await waitFor(() => result.current.wallets instanceof Map)
 
     // Initially, the wallet map should not include any extra extension.
-    expect(result.current.has('updatedExt')).toBe(false)
+    expect(result.current.wallets.has('updatedExt')).toBe(false)
 
     // Now, simulate receiving an "extensionsUpdated" message with new extension data.
     const updatedExtension = {
@@ -191,8 +194,10 @@ describe('useWallets hook', () => {
     })
 
     // Wait for the state update after handling the message.
-    await waitFor(() => result.current.has('updatedExt'))
-    expect(result.current.has('updatedExt')).toBe(true)
+    await waitFor(() => result.current.wallets.has('updatedExt'))
+    expect(result.current.wallets.has('updatedExt')).toBe(true)
+    // Verify availableExtensions is updated to reflect the newly detected extension.
+    expect(result.current.availableExtensions).toEqual([updatedExtension])
   })
 
   test('respects networkType parameter for web wallets', async () => {
@@ -202,12 +207,12 @@ describe('useWallets hook', () => {
     const { result } = renderHook(() => useWallets(NetworkType.GHOSTNET))
 
     await waitFor(() => {
-      const walletMap = result.current
+      const walletMap = result.current.wallets
       const webWallet = walletMap.get('webWallet')
       return Boolean(webWallet && webWallet.links[0] === 'http://web.testnet')
     })
 
-    const walletMap = result.current
+    const walletMap = result.current.wallets
     const webWallet = walletMap.get('webWallet')
     expect(webWallet).toBeDefined()
     expect(webWallet!.links[0]).toBe('http://web.testnet')
@@ -217,7 +222,7 @@ describe('useWallets hook', () => {
     ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([])
 
     const { unmount, result } = renderHook(() => useWallets())
-    await waitFor(() => result.current instanceof Map)
+    await waitFor(() => result.current.wallets instanceof Map)
 
     unmount()
     expect(mockRemoveEventListener).toHaveBeenCalledWith('message', expect.any(Function))
