@@ -37,10 +37,13 @@
     "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
     "@tezos-x/octez.connect-types": "4.8.3",
     "@tezos-x/octez.connect-utils": "4.8.3",
+    "@walletconnect/sign-client": "^2.23.9",
     "@walletconnect/utils": "2.18.0",
     "qrcode-svg": "^1.1.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "sinon": "21.1.2",
+    "static-server": "3.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-babel": "^6.0.4",
@@ -48,7 +51,7 @@
     "@rollup/plugin-image": "^3.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-terser": "^1.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -59,7 +62,7 @@
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.0",
     "postcss-import": "^16.1.0",
-    "rollup": "4.39.0",
+    "rollup": "^4.60.2",
     "rollup-plugin-postcss": "^4.0.2",
     "rollup-plugin-string": "^3.0.0",
     "rollup-plugin-svg": "^2.0.0",
