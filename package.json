@@ -1,10 +1,8 @@
 {
-  "name": "@tezos-x/octez.connect-sdk",
-  "description": "The octez.connect-sdk allows you to easily connect DApps with Wallets through P2P communication or a chrome extension.",
-  "main": "dist/cjs/index.js",
-  "module": "dist/esm/index.js",
-  "unpkg": "dist/octez.connect.min.js",
-  "types": "dist/esm/index.d.ts",
+  "name": "octez.connect-workspace",
+  "private": true,
+  "version": "5.0.0-beta.4",
+  "description": "Workspace for the Trilitech-maintained octez.connect packages.",
   "workspaces": [
     "packages/*"
   ],
@@ -18,10 +16,10 @@
     "dapp"
   ],
   "license": "MIT",
-  "homepage": "https://octez-connect.tezos.com",
+  "homepage": "https://github.com/trilitech/octez.connect",
   "repository": {
     "type": "git",
-    "url": "https://github.com/trilitech/octez.connect"
+    "url": "https://github.com/trilitech/octez.connect.git"
   },
   "engines": {
     "npm": ">=7.0.0",
@@ -29,7 +27,8 @@
   },
   "scripts": {
     "prebuild": "npx tsx scripts/download-wallet-lists.ts",
-    "build": "npm run check-version && lerna run tsc && npm run webpack:all",
+    "build": "npm run check:versions && npm run build:packages && npm run webpack:all",
+    "build:packages": "node scripts/run-workspaces.mjs tsc --topological",
     "serve": "static-server examples --port 8080",
     "webpack:all": "npm run webpack:sdk && npm run webpack:dapp && npm run webpack:wallet",
     "webpack:sdk": "webpack --mode=development --config webpack.config.js --entry=./packages/octez.connect-sdk/dist/cjs/index.js --output-path ./webpack_builds/sdk && terser --ecma=12 ./webpack_builds/sdk/main.js -o ./packages/octez.connect-sdk/dist/octez.connect.min.js && cp ./packages/octez.connect-sdk/dist/octez.connect.min.js ./examples/octez.connect.min.js",
@@ -39,24 +38,18 @@
     "lint": "eslint 'src/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' --fix",
     "lint-ci": "eslint 'src/**/*.ts' -f json -o lintReport.json || true",
-    "bootstrap": "lerna bootstrap",
-    "test": "lerna run test --stream",
+    "test": "node scripts/run-workspaces.mjs test",
     "test-ci": "nyc --reporter=lcov npm test",
     "e2e": "npx playwright test e2e",
     "audit-ci": "npm audit --json > audit.json && node scripts/dependency-scanning.js",
-    "prepare": "npm run build",
-    "check-version": "ts-node --project tsconfig-cjs.json scripts/check-sdk-version.ts",
+    "check:versions": "node scripts/check-workspace-version.mjs",
+    "check-version": "npm run check:versions",
+    "version:sync": "node scripts/set-workspace-version.mjs",
     "typedoc": "typedoc",
-    "publish": "lerna run tsc && lerna publish",
-    "bump:version": "lerna version --no-git-tag-version --exact",
-    "bump:major": "lerna version --no-git-tag-version major --exact --yes",
-    "bump:minor": "lerna version --no-git-tag-version minor --exact --yes",
-    "bump:patch": "lerna version --no-git-tag-version patch --exact --yes",
-    "bump:alpha": "lerna version --no-git-tag-version prerelease --preid alpha --exact --yes",
-    "bump:beta": "lerna version --no-git-tag-version prerelease --preid beta --exact --yes",
+    "publish:packages": "node scripts/publish-workspaces.mjs",
     "build:ui": "cd packages/octez.connect-ui && npm run tsc && cd ../.. && npm run webpack:sdk"
   },
-  "author": "Papers AG <contact@papers.ch> (https://papers.ch)",
+  "author": "Trilitech",
   "dependencies": {
     "@tezos-x/octez.connect-blockchain-substrate": "file:packages/octez.connect-blockchain-substrate",
     "@tezos-x/octez.connect-blockchain-tezos": "file:packages/octez.connect-blockchain-tezos",
@@ -103,7 +96,6 @@
     "jest-environment-jsdom": "^29.7.0",
     "jsdom": "26.1.0",
     "jsdom-global": "3.0.2",
-    "lerna": "^9.0.4",
     "nyc": "^18.0.0",
     "prettier": "3.5.3",
     "pretty-quick": "4.1.1",
@@ -120,9 +112,6 @@
     "webpack": "^5.99.5",
     "webpack-cli": "^6.0.1"
   },
-  "files": [
-    "/dist"
-  ],
   "nyc": {
     "include": [
       "src/**/*.ts"
@@ -145,7 +134,7 @@
   },
   "husky": {
     "hooks": {
-      "pre-commit": "npm run check-version && pretty-quick --staged"
+      "pre-commit": "npm run check:versions && pretty-quick --staged"
     }
   }
 }
