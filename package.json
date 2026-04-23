@@ -27,7 +27,7 @@
   },
   "scripts": {
     "prebuild": "npx tsx scripts/download-wallet-lists.ts",
-    "build": "npm run check:versions && npm run build:packages && npm run webpack:all",
+    "build": "npm run check:versions && npm run build:packages && npm run webpack:all && npm run check:sourcemaps",
     "build:packages": "node scripts/run-workspaces.mjs tsc --topological",
     "serve": "static-server examples --port 8080",
     "webpack:all": "npm run webpack:sdk && npm run webpack:dapp && npm run webpack:wallet",
@@ -43,6 +43,7 @@
     "e2e": "npx playwright test e2e",
     "audit-ci": "npm audit --json > audit.json && node scripts/dependency-scanning.js",
     "check:versions": "node scripts/check-workspace-version.mjs && node scripts/check-security-deps.mjs",
+    "check:sourcemaps": "node scripts/check-sourcemaps.mjs",
     "check-version": "npm run check:versions",
     "version:sync": "node scripts/set-workspace-version.mjs",
     "readmes:sync": "node scripts/sync-package-readmes.mjs",
