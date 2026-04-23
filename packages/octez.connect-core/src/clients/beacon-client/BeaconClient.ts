@@ -1,10 +1,8 @@
-import { ExposedPromise } from '@tezos-x/octez.connect-utils'
-import { getKeypairFromSeed, toHex, generateGUID } from '@tezos-x/octez.connect-utils'
+import { ExposedPromise, getKeypairFromSeed, KeyPair, toHex, generateGUID } from '@tezos-x/octez.connect-utils'
 import { AnalyticsInterface, Storage, StorageKey } from '@tezos-x/octez.connect-types'
 import { SDK_VERSION } from '../../constants'
 import { windowRef } from '../../MockWindow'
 import { BeaconClientOptions } from './BeaconClientOptions'
-import { KeyPair } from '@stablelib/ed25519'
 import { MockAnalytics } from '../../MockAnalytics'
 
 /**

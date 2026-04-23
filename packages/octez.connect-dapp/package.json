@@ -40,6 +40,7 @@
     "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
     "@tezos-x/octez.connect-transport-walletconnect": "4.8.3",
     "@tezos-x/octez.connect-ui": "4.8.3",
+    "@tezos-x/octez.connect-utils": "4.8.3",
     "broadcast-channel": "^7.1.0"
   }
 }

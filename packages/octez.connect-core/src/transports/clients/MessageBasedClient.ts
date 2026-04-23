@@ -3,12 +3,12 @@ import {
   decryptCryptoboxPayload,
   encryptCryptoboxPayload,
   generateGUID,
+  KeyPair,
   secretbox_NONCEBYTES,
   secretbox_MACBYTES
 } from '@tezos-x/octez.connect-utils'
 import { CommunicationClient } from './CommunicationClient'
 import { PostMessagePairingRequest, PostMessagePairingResponse } from '@tezos-x/octez.connect-types'
-import { KeyPair } from '@stablelib/ed25519'
 
 /**
  * @internalapi
