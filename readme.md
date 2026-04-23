@@ -92,9 +92,11 @@ For iOS wallets, the wallet needs to define a custom url scheme to support the s
 ## Development
 
 ```
-$ npm i
+$ npm ci
+$ npm run check:versions
 $ npm run build
 $ npm run test
+$ npm run e2e:smoke
 ```
 
 Once the SDK is built, you can open the `dapp.html` or `wallet.html` file in your browser and try out the basic functionality. To support browser extensions as well, the file should be viewed over a webserver. You can navigate to the example folder and easily start one with `python -m SimpleHTTPServer 8000` (or `python3 -m http.server 8000` with Python 3.x) and then open the examples with `http://localhost:8000/`.
