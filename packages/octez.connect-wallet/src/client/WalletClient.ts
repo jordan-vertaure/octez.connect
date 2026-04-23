@@ -1,4 +1,3 @@
-import axios from 'axios'
 import {
   Serializer,
   Client,
@@ -193,8 +192,13 @@ export class WalletClient extends Client {
     oracleUrl: string = NOTIFICATION_ORACLE_URL
   ) {
     // Check if account is already registered
-    const challenge: { id: string; timestamp: string } = (await axios.get(`${oracleUrl}/challenge`))
-      .data
+    const challengeResponse = await fetch(`${oracleUrl}/challenge`)
+    if (!challengeResponse.ok) {
+      throw new Error(
+        `getRegisterPushChallenge failed: ${challengeResponse.status} ${challengeResponse.statusText}`
+      )
+    }
+    const challenge: { id: string; timestamp: string } = await challengeResponse.json()
 
     const constructedString = [
       'Tezos Signed Message: ',
@@ -230,13 +234,10 @@ export class WalletClient extends Client {
       return token
     }
 
-    const register: {
-      accessToken: string
-      managementToken: string
-      message: string
-      success: boolean
-    } = (
-      await axios.post(`${oracleUrl}/register`, {
+    const registerResponse = await fetch(`${oracleUrl}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         name: this.name,
         challenge,
         accountPublicKey,
@@ -245,7 +246,18 @@ export class WalletClient extends Client {
         protocolIdentifier,
         deviceId
       })
-    ).data
+    })
+    if (!registerResponse.ok) {
+      throw new Error(
+        `registerPush failed: ${registerResponse.status} ${registerResponse.statusText}`
+      )
+    }
+    const register: {
+      accessToken: string
+      managementToken: string
+      message: string
+      success: boolean
+    } = await registerResponse.json()
 
     const newToken = {
       publicKey: accountPublicKey,
