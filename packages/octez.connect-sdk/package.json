@@ -2,8 +2,9 @@
   "name": "@tezos-x/octez.connect-sdk",
   "version": "4.8.3",
   "description": "The `octez.connect-sdk` simplifies and abstracts the communication between dApps and wallets over different transport layers.",
-  "author": "Andreas Gassmann <a.gassmann@papers.ch>",
+  "author": "Trilitech",
   "license": "ISC",
+  "homepage": "https://github.com/trilitech/octez.connect",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "unpkg": "dist/octez.connect.min.js",
@@ -24,13 +25,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/trilitech/octez.connect-sdk.git"
+    "url": "git+https://github.com/trilitech/octez.connect.git"
   },
   "scripts": {
     "tsc": "tsc -p tsconfig.json && tsc -p tsconfig-cjs.json"
   },
   "bugs": {
-    "url": "https://github.com/trilitech/octez.connect-sdk/issues"
+    "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
     "@tezos-x/octez.connect-blockchain-substrate": "4.8.3",
