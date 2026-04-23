@@ -9,10 +9,33 @@ import json from '@rollup/plugin-json'
 import postcssImport from 'postcss-import'
 
 const extensions = ['.js', '.jsx', '.ts', '.tsx']
+const nodeModuleWarningMatcher = /node_modules[\\/](ox|detect-browser|@stablelib)/
+
+const handleRollupWarnings = (warning, warn) => {
+  const id = warning.id ?? ''
+  const code = warning.code ?? ''
+  const message = warning.message ?? ''
+
+  // Ignore noisy third-party warnings that do not affect emitted artifacts.
+  if (nodeModuleWarningMatcher.test(id) && (code === 'INVALID_ANNOTATION' || code === 'THIS_IS_UNDEFINED')) {
+    return
+  }
+
+  if (code === 'CIRCULAR_DEPENDENCY' && nodeModuleWarningMatcher.test(message)) {
+    return
+  }
+
+  if (code === 'MISSING_NODE_BUILTINS' && nodeModuleWarningMatcher.test(id) && message.includes('"crypto"')) {
+    return
+  }
+
+  warn(warning)
+}
 
 export default [
   {
     input: 'src/index.ts',
+    onwarn: handleRollupWarnings,
     output: {
       file: 'dist/bundle.js',
       format: 'iife',
@@ -46,6 +69,7 @@ export default [
   },
   {
     input: 'src/index.ts',
+    onwarn: handleRollupWarnings,
     output: [
       {
         file: 'dist/cjs/index.js',

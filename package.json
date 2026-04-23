@@ -28,7 +28,8 @@
   },
   "scripts": {
     "prebuild": "ts-node --project tsconfig-cjs.json scripts/generate-wallet-list.ts",
-    "build": "npm run check:versions && npm run build:packages && npm run webpack:all && npm run check:sourcemaps",
+    "build": "npm run check:versions && npm run clean:dist && npm run build:packages && npm run webpack:all && npm run check:sourcemaps",
+    "clean:dist": "node scripts/clean-dist.mjs",
     "build:packages": "node scripts/run-workspaces.mjs tsc --topological",
     "webpack:all": "npm run webpack:sdk && npm run webpack:dapp && npm run webpack:wallet",
     "webpack:sdk": "webpack --mode=development --config webpack.config.js --entry=./packages/octez.connect-sdk/dist/cjs/index.js --output-path ./webpack_builds/sdk && terser --ecma=12 ./webpack_builds/sdk/main.js -o ./packages/octez.connect-sdk/dist/octez.connect.min.js && cp ./packages/octez.connect-sdk/dist/octez.connect.min.js ./examples/octez.connect.min.js",
