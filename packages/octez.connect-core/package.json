@@ -35,11 +35,11 @@
   },
   "dependencies": {
     "@stablelib/nacl": "^2.0.1",
-    "@stablelib/utf8": "^2.0.1",
+    "@stablelib/utf8": "^2.1.0",
     "@stablelib/x25519-session": "^2.0.1",
     "@tezos-x/octez.connect-types": "5.0.0-beta.4",
     "@tezos-x/octez.connect-utils": "5.0.0-beta.4",
-    "broadcast-channel": "^7.1.0",
+    "broadcast-channel": "^7.3.0",
     "bs58check": "4.0.0"
   }
 }
