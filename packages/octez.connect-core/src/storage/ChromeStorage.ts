@@ -18,14 +18,15 @@ export class ChromeStorage implements Storage {
 
   public async get<K extends StorageKey>(key: K): Promise<StorageKeyReturnType[K]> {
     return new Promise((resolve) => {
-      chrome.storage.local.get(null, (storageContent) => {
-        if (storageContent[key]) {
-          resolve(storageContent[key] as unknown as StorageKeyReturnType[K])
+      chrome.storage.local.get(null, (storageContent: Partial<StorageKeyReturnType>) => {
+        const value = storageContent[key]
+        if (value !== undefined) {
+          resolve(value)
         } else {
           const defaultValue = defaultValues[key]
 
           if (typeof defaultValue === 'object') {
-            resolve(JSON.parse(JSON.stringify(defaultValue)) as StorageKeyReturnType[K])
+            resolve(JSON.parse(JSON.stringify(defaultValue)))
           } else {
             resolve(defaultValue)
           }
