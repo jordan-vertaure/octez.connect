@@ -1,7 +1,6 @@
 // __tests__/communication-client/P2PCommunicationClient.test.ts
 
 // Mock external dependencies
-jest.mock('axios')
 jest.mock('@tezos-x/octez.connect-utils', () => {
   const actual = jest.requireActual('@tezos-x/octez.connect-utils')
 
@@ -25,7 +24,6 @@ jest.mock('../../src/matrix-client/MatrixClient', () => ({
 }))
 
 // Imports
-import axios from 'axios'
 import {
   ExposedPromise,
   generateGUID,
@@ -119,19 +117,30 @@ describe('P2PCommunicationClient', () => {
   })
 
   describe('getBeaconInfo', () => {
+    const originalFetch = global.fetch
+
+    afterEach(() => {
+      global.fetch = originalFetch
+    })
+
     it('fetches /_synapse/client/beacon/info and maps the response', async () => {
-      const axiosGetMock = axios.get as jest.Mock
-      axiosGetMock.mockResolvedValue({
-        data: {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
           region: 'eu',
           known_servers: ['a', 'b'],
           timestamp: 9876
-        }
+        })
       })
+      global.fetch = fetchMock as unknown as typeof fetch
+
       const info = await client.getBeaconInfo('relay.test')
-      expect(axios.get).toHaveBeenCalledWith('https://relay.test/_synapse/client/beacon/info', {
-        timeout: 10_000
-      })
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://relay.test/_synapse/client/beacon/info',
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
       expect(info).toEqual({
         region: 'eu',
         known_servers: ['a', 'b'],
