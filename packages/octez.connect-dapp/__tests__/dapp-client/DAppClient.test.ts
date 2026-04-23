@@ -128,6 +128,9 @@ jest.mock('@tezos-x/octez.connect-core', () => {
   }
 })
 
+jest.mock('@tezos-x/octez.connect-transport-walletconnect', () => ({
+  WalletConnectTransport: class WalletConnectTransport {}
+}))
 jest.mock('@walletconnect/sign-client', () => ({}))
 jest.mock('@walletconnect/types', () => ({}))
 jest.mock('@walletconnect/utils', () => ({ getSdkError: jest.fn() }))
