@@ -35,9 +35,17 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
+<<<<<<< HEAD
     "@tezos-x/octez.connect-core": "5.0.0-beta.4",
     "@tezos-x/octez.connect-transport-matrix": "5.0.0-beta.4",
     "@tezos-x/octez.connect-transport-postmessage": "5.0.0-beta.4",
     "@tezos-x/octez.connect-utils": "5.0.0-beta.4"
+=======
+    "@tezos-x/octez.connect-core": "4.8.3",
+    "@tezos-x/octez.connect-transport-matrix": "4.8.3",
+    "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
+    "@tezos-x/octez.connect-types": "4.8.3",
+    "@tezos-x/octez.connect-utils": "4.8.3"
+>>>>>>> 5a1f40cd (build(deps): declare missing workspace dependencies)
   }
 }

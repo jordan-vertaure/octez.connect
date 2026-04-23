@@ -35,7 +35,10 @@
   },
   "dependencies": {
     "@tezos-x/octez.connect-core": "5.0.0-beta.4",
-    "@tezos-x/octez.connect-utils": "5.0.0-beta.4"
+    "@tezos-x/octez.connect-types": "5.0.0-beta.4",
+    "@tezos-x/octez.connect-utils": "5.0.0-beta.4",
+    "@stablelib/blake2b": "^2.0.1",
+    "@stablelib/utf8": "^2.1.0"
   },
   "devDependencies": {
     "jest-environment-jsdom": "^29.7.0"

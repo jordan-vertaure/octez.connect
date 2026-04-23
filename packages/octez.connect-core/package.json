@@ -34,6 +34,7 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
+    "@stablelib/blake2b": "^2.0.1",
     "@stablelib/nacl": "^2.0.1",
     "@stablelib/utf8": "^2.1.0",
     "@stablelib/x25519-session": "^2.0.1",
