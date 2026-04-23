@@ -359,6 +359,6 @@ export function createSenderSessionKey(selfKeyPair: KeyPair, receiverPublicKey: 
   )
 }
 
-export type { KeyPair, SessionKeys }
+export type { KeyPair }
 
 /* eslint-enable prefer-arrow/prefer-arrow-functions */
