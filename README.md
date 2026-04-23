@@ -3,7 +3,6 @@
 [![npm](https://img.shields.io/npm/v/@tezos-x/octez.connect-sdk.svg?colorB=brightgreen)](https://www.npmjs.com/package/@tezos-x/octez.connect-sdk)
 [![documentation](https://img.shields.io/badge/documentation-online-brightgreen.svg)](https://airgap-it.github.io/octez.connect-sdk/)
 [![GitHub Action](https://github.com/trilitech/octez.connect/workflows/Build%2C%20Test%20and%20Analyze/badge.svg)](https://github.com/trilitech/octez.connect/actions?query=workflow%3A%22Build%2C+Test+and+Analyze%22+branch%3Amain)
-[![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg?style=flat-square)](https://github.com/prettier/prettier)
 
 
 ## Intro
