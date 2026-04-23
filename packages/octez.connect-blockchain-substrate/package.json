@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-blockchain-substrate",
   "version": "4.8.3",
-  "description": "This package adds support for `substrate` based blockchains. It can be used in combination with the `@tezos-x/octez.connect-dapp` or `@tezos-x/octez.connect-wallet` packages.",
+  "description": "Substrate blockchain support package for the octez.connect SDK.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

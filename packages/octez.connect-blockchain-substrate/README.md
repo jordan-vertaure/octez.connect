@@ -1,21 +1,23 @@
 # `@tezos-x/octez.connect-blockchain-substrate`
 
-This package is part of the `@tezos-x/octez.connect-sdk` project. [Read more](https://github.com/trilitech/octez.connect)
+Substrate blockchain support package for the octez.connect SDK.
 
-## Introduction
+This is an add-on package in the Trilitech-maintained octez.connect SDK line. Most consumers get it transitively through higher-level octez.connect packages.
 
-This package adds support for `substrate` based blockchains. It can be used in combination with the `@tezos-x/octez.connect-dapp` or `@tezos-x/octez.connect-wallet` packages.
+## Package provenance
 
-## Usage
+This package is published from the Trilitech-maintained octez.connect repository:
+[trilitech/octez.connect](https://github.com/trilitech/octez.connect)
 
-```
-import { DAppClient } from '@tezos-x/octez.connect-dapp'
-import { SubstrateBlockchain } from '@tezos-x/octez.connect-blockchain-substrate'
+- Original Beacon lineage: [airgap-it/beacon-sdk](https://github.com/airgap-it/beacon-sdk)
+- External maintenance line Trilitech may selectively import from: [ecadlabs/beacon-sdk-taquito-patches](https://github.com/ecadlabs/beacon-sdk-taquito-patches)
 
-const client = new DAppClient({
-    name: 'Example DApp',
-})
+## Usually install instead
 
-const substrateBlockchain = new SubstrateBlockchain()
-client.addBlockchain(substrateBlockchain)
-```
+- `@tezos-x/octez.connect-sdk` for the general octez.connect SDK surface
+- `@tezos-x/octez.connect-dapp` for dApp integrations
+- `@tezos-x/octez.connect-wallet` for wallet integrations
+## Notes
+
+- Trilitech publishes these packages under the `@tezos-x/octez.connect-*` scope
+- Release notes, package policy, and the current package list live in the repository README

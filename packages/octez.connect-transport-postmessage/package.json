@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-transport-postmessage",
   "version": "4.8.3",
-  "description": "This package contains methods to facilitate communication over the postmessage interface of the browser to talk to browser extensions.",
+  "description": "PostMessage transport for octez.connect communication with browser extensions.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

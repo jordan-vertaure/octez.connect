@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-sdk",
   "version": "4.8.3",
-  "description": "The `octez.connect-sdk` simplifies and abstracts the communication between dApps and wallets over different transport layers.",
+  "description": "octez.connect SDK umbrella package for Tezos dApp and wallet communication across supported transports.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

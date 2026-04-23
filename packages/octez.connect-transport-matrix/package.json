@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-transport-matrix",
   "version": "4.8.3",
-  "description": "This package contains methods to facilitate communication over the octez.connect network, a decentralised P2P network that is based on the matrix protocol.",
+  "description": "Matrix transport for octez.connect peer-to-peer communication.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

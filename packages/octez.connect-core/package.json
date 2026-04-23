@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-core",
   "version": "4.8.3",
-  "description": "This package contains internal methods that are used by both the dApp and wallet client.",
+  "description": "Core client, storage, and protocol helpers shared across the octez.connect SDK packages.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

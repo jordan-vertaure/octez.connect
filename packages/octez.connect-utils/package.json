@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-utils",
   "version": "4.8.3",
-  "description": "This package contains utility functions that are used throughout the octez.connect-sdk",
+  "description": "Shared utility helpers used across the octez.connect SDK packages.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-transport-walletconnect",
   "version": "4.8.3",
-  "description": "This package contains methods to facilitate communication over the WalletConnect network.",
+  "description": "WalletConnect transport for octez.connect communication.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",

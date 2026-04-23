@@ -1,15 +1,23 @@
 # `@tezos-x/octez.connect-wallet`
 
-This package is part of the `@tezos-x/octez.connect-sdk` project. [Read more](https://github.com/trilitech/octez.connect)
+octez.connect wallet client for connecting Tezos wallets to dApps.
 
-## Introduction
+This is a primary package in the Trilitech-maintained octez.connect SDK line and may be installed directly.
 
-Use this package in your wallet to instanciate a `WalletClient` object and communicate to dApps.
+## Install
 
-## Usage
-
+```sh
+npm install @tezos-x/octez.connect-wallet
 ```
-import { WalletClient } from '@tezos-x/octez.connect-wallet'
+## Package provenance
 
-const walletClient = new WalletClient({ name: "Example Wallet" });
-```
+This package is published from the Trilitech-maintained octez.connect repository:
+[trilitech/octez.connect](https://github.com/trilitech/octez.connect)
+
+- Original Beacon lineage: [airgap-it/beacon-sdk](https://github.com/airgap-it/beacon-sdk)
+- External maintenance line Trilitech may selectively import from: [ecadlabs/beacon-sdk-taquito-patches](https://github.com/ecadlabs/beacon-sdk-taquito-patches)
+
+## Notes
+
+- Trilitech publishes these packages under the `@tezos-x/octez.connect-*` scope
+- Release notes, package policy, and the current package list live in the repository README

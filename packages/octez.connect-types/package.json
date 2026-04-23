@@ -1,7 +1,7 @@
 {
   "name": "@tezos-x/octez.connect-types",
   "version": "4.8.3",
-  "description": "This package contains types that are used throughout the octez.connect SDK.",
+  "description": "Shared types used across the octez.connect SDK packages.",
   "author": "Trilitech",
   "license": "ISC",
   "homepage": "https://github.com/trilitech/octez.connect",
