@@ -2,7 +2,7 @@
   "name": "@tezos-x/octez.connect-transport-walletconnect",
   "version": "5.0.0-beta.4",
   "description": "This package contains methods to facilitate communication over the WalletConnect network.",
-  "author": "Papers AG",
+  "author": "Blockchain Infra <blockchain.infra@trili.tech>",
   "homepage": "https://octez-connect.tezos.com",
   "license": "ISC",
   "main": "dist/cjs/index.js",
