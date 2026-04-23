@@ -3,7 +3,11 @@ import path from 'node:path'
 import { readJson, repoRoot } from './workspace-utils.mjs'
 
 const minimumVersions = {
-  '@stablelib/ed25519': '2.1.0'
+  '@stablelib/ed25519': '2.1.0',
+  'unstorage': '1.17.5',
+  'h3': '1.15.9',
+  'defu': '6.1.7',
+  'picomatch': '2.3.2'
 }
 
 const compareSemver = (left, right) => {
@@ -28,14 +32,23 @@ const compareSemver = (left, right) => {
 
 const manifests = [
   readJson(path.join(repoRoot, 'packages', 'octez.connect-core', 'package.json')),
-  readJson(path.join(repoRoot, 'packages', 'octez.connect-utils', 'package.json'))
+  readJson(path.join(repoRoot, 'packages', 'octez.connect-utils', 'package.json')),
+  readJson(path.join(repoRoot, 'packages', 'octez.connect-transport-walletconnect', 'package.json'))
 ]
 
 const lockfile = readJson(path.join(repoRoot, 'package-lock.json'))
 const failures = []
 
+const getResolvedEntries = (dependencyName) =>
+  Object.entries(lockfile.packages ?? {})
+    .filter(([packagePath]) => packagePath.endsWith(`node_modules/${dependencyName}`))
+    .map(([packagePath, entry]) => ({ packagePath, version: entry?.version }))
+
 const utilsManifest = manifests.find((manifest) => manifest.name === '@tezos-x/octez.connect-utils')
 const coreManifest = manifests.find((manifest) => manifest.name === '@tezos-x/octez.connect-core')
+const walletConnectTransportManifest = manifests.find(
+  (manifest) => manifest.name === '@tezos-x/octez.connect-transport-walletconnect'
+)
 
 const declaredVersion = utilsManifest.dependencies?.['@stablelib/ed25519']
 
@@ -57,18 +70,24 @@ if (coreManifest.dependencies?.['@stablelib/ed25519']) {
   )
 }
 
-for (const [dependencyName, minimumVersion] of Object.entries(minimumVersions)) {
-  const lockfileEntry = lockfile.packages?.[`node_modules/${dependencyName}`]
+if (walletConnectTransportManifest.dependencies?.elliptic) {
+  failures.push('@tezos-x/octez.connect-transport-walletconnect must not declare elliptic')
+}
 
-  if (!lockfileEntry?.version) {
+for (const [dependencyName, minimumVersion] of Object.entries(minimumVersions)) {
+  const resolvedEntries = getResolvedEntries(dependencyName)
+
+  if (resolvedEntries.length === 0) {
     failures.push(`package-lock.json is missing resolved entry for ${dependencyName}`)
     continue
   }
 
-  if (compareSemver(lockfileEntry.version, minimumVersion) < 0) {
-    failures.push(
-      `package-lock.json resolves ${dependencyName}@${lockfileEntry.version}, expected at least ${minimumVersion}`
-    )
+  for (const entry of resolvedEntries) {
+    if (!entry.version || compareSemver(entry.version, minimumVersion) < 0) {
+      failures.push(
+        `package-lock.json resolves ${dependencyName}@${entry.version ?? 'missing'} at ${entry.packagePath}, expected at least ${minimumVersion}`
+      )
+    }
   }
 }
 
