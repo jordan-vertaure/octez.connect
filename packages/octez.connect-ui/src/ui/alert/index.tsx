@@ -4,7 +4,7 @@ import { Subject, Subscription } from '../../utils/subject'
 import { AlertConfig, ConfigurableAlertProps } from '../common'
 import PairingAlert from './components/pairing-alert'
 import InfoAlert from './components/info-alert'
-import { getColorMode } from 'src/utils/colorMode'
+import { getColorMode } from '../../utils/colorMode'
 import { NetworkType } from '@tezos-x/octez.connect-types'
 
 // Import the bundled CSS as a raw string
