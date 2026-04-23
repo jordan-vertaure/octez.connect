@@ -69,10 +69,10 @@
     "rollup-plugin-postcss": "^4.0.2",
     "rollup-plugin-string": "^3.0.0",
     "rollup-plugin-typescript2": "^0.37.0",
-    "vite": "^8.0.8"
+    "vite": "^8.0.9"
   },
   "optionalDependencies": {
-    "@rollup/rollup-darwin-arm64": "4.60.1",
-    "@rollup/rollup-linux-x64-gnu": "4.60.1"
+    "@rollup/rollup-darwin-arm64": "4.60.2",
+    "@rollup/rollup-linux-x64-gnu": "4.60.2"
   }
 }
