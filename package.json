@@ -42,7 +42,7 @@
     "test-ci": "nyc --reporter=lcov npm test",
     "e2e": "npx playwright test e2e",
     "audit-ci": "npm audit --json > audit.json && node scripts/dependency-scanning.js",
-    "check:versions": "node scripts/check-workspace-version.mjs",
+    "check:versions": "node scripts/check-workspace-version.mjs && node scripts/check-security-deps.mjs",
     "check-version": "npm run check:versions",
     "version:sync": "node scripts/set-workspace-version.mjs",
     "typedoc": "typedoc",

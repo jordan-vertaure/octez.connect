@@ -7,7 +7,7 @@ import {
 } from '@tezos-x/octez.connect-types'
 import { Logger } from '@tezos-x/octez.connect-core'
 import { WalletConnectTransport } from '@tezos-x/octez.connect-transport-walletconnect'
-import { KeyPair } from '@stablelib/ed25519'
+import { KeyPair } from '@tezos-x/octez.connect-utils'
 import { SignClientTypes } from '@walletconnect/types'
 import { isMobileOS } from '@tezos-x/octez.connect-ui'
 

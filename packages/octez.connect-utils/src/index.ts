@@ -18,7 +18,14 @@ export {
   createReceiverSessionKey,
   createSenderSessionKey
 } from './utils/crypto'
-export type { KeyPair, SessionKeys } from './utils/crypto'
+export {
+  convertPublicKeyToX25519,
+  convertSecretKeyToX25519,
+  generateKeyPairFromSeed,
+  sign,
+  type KeyPair
+} from './utils/ed25519'
+export type { SessionKeys } from './utils/crypto'
 export { generateGUID } from './utils/generate-uuid'
 export { loadWalletLists, WalletLists } from './wallet-list-loader'
 
