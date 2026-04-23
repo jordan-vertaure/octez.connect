@@ -52,7 +52,7 @@ try {
 }
 ```
 
-For a more complete example, take a look at the `example-dapp.html` file.
+For a more complete example, see [`examples/dapp.html`](./examples/dapp.html).
 
 ## Example Wallet integration
 
@@ -81,7 +81,7 @@ client
   .catch((error) => console.error('connect error', error))
 ```
 
-For a more complete example, take a look at the `example-wallet.html` file.
+For a more complete example, see [`examples/wallet.html`](./examples/wallet.html).
 
 ## Adding a wallet to octez.connect
 
@@ -99,4 +99,7 @@ $ npm run test
 $ npm run e2e:smoke
 ```
 
-Once the SDK is built, you can open the `dapp.html` or `wallet.html` file in your browser and try out the basic functionality. To support browser extensions as well, the file should be viewed over a webserver. You can navigate to the example folder and easily start one with `python -m SimpleHTTPServer 8000` (or `python3 -m http.server 8000` with Python 3.x) and then open the examples with `http://localhost:8000/`.
+Once the SDK is built, you can open [`examples/dapp.html`](./examples/dapp.html) or
+[`examples/wallet.html`](./examples/wallet.html) in your
+browser and try the basic functionality. To support browser extensions, the
+examples should be served over HTTP rather than opened directly from disk.
