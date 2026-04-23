@@ -43,3 +43,5 @@ npm install --package-lock-only --ignore-scripts
 Releases are published from GitHub Actions using npm Trusted Publishers. The npm
 package settings must point at `.github/workflows/release.yml` in this repo.
 Avoid introducing long-lived npm publish tokens back into the workflow.
+Prerelease versions publish under the prerelease identifier as the npm dist-tag,
+for example `4.8.4-beta.1` publishes with the `beta` tag.
