@@ -30,6 +30,9 @@ export default [
       typescript({
         tsconfig: 'tsconfig.json',
         tsconfigOverride: {
+          compilerOptions: {
+            noEmit: false
+          },
           include: ['src/**/*'],
           exclude: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts']
         }
@@ -73,7 +76,14 @@ export default [
       }),
       typescript({
         tsconfig: 'tsconfig.json',
+        useTsconfigDeclarationDir: true,
         tsconfigOverride: {
+          compilerOptions: {
+            noEmit: false,
+            declaration: true,
+            declarationDir: './dist/esm',
+            declarationMap: true
+          },
           include: ['src/**/*'],
           exclude: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts']
         }
