@@ -41,6 +41,7 @@
     "@tezos-x/octez.connect-transport-walletconnect": "4.8.3",
     "@tezos-x/octez.connect-ui": "4.8.3",
     "@tezos-x/octez.connect-utils": "4.8.3",
+    "@walletconnect/types": "^2.23.9",
     "broadcast-channel": "^7.3.0"
   }
 }
