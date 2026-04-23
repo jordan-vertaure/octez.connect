@@ -12,6 +12,9 @@ const walk = (dir) => {
     const entryPath = path.join(dir, entry.name)
 
     if (entry.isDirectory()) {
+      if (entry.name === 'node_modules') {
+        continue
+      }
       files.push(...walk(entryPath))
       continue
     }

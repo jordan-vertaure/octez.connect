@@ -21,7 +21,14 @@ function isSubpath(rootPath, targetPath) {
 }
 
 async function resolveFilePath(rootPath, requestUrl) {
-  const requestPath = decodeURIComponent(requestUrl.split('?')[0].split('#')[0])
+  let requestPath
+  try {
+    requestPath = decodeURIComponent(requestUrl.split('?')[0].split('#')[0])
+  } catch (error) {
+    const malformedUrlError = new Error('Malformed request URL')
+    malformedUrlError.code = 'ERR_MALFORMED_URL'
+    throw malformedUrlError
+  }
   const relativePath = requestPath === '/' ? './index.html' : `.${requestPath}`
   let targetPath = path.resolve(rootPath, relativePath)
 
@@ -56,49 +63,69 @@ async function resolveFilePath(rootPath, requestUrl) {
 function createStaticServer({ rootPath, port, name = 'octez.connect' }) {
   const absoluteRootPath = path.resolve(rootPath)
   const server = http.createServer(async (request, response) => {
-    if (!request.url) {
-      response.writeHead(400)
-      response.end('Bad Request')
+    try {
+      if (!request.url) {
+        response.writeHead(400, { 'X-Powered-By': name })
+        response.end('Bad Request')
 
-      return
-    }
+        return
+      }
 
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      response.writeHead(405, { Allow: 'GET, HEAD' })
-      response.end()
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        response.writeHead(405, { Allow: 'GET, HEAD' })
+        response.end()
 
-      return
-    }
+        return
+      }
 
-    const filePath = await resolveFilePath(absoluteRootPath, request.url)
+      const filePath = await resolveFilePath(absoluteRootPath, request.url)
 
-    if (filePath === null) {
-      response.writeHead(403, { 'X-Powered-By': name })
-      response.end('Forbidden')
+      if (filePath === null) {
+        response.writeHead(403, { 'X-Powered-By': name })
+        response.end('Forbidden')
 
-      return
-    }
+        return
+      }
 
-    if (!filePath) {
-      response.writeHead(404, { 'X-Powered-By': name })
-      response.end('Not Found')
+      if (!filePath) {
+        response.writeHead(404, { 'X-Powered-By': name })
+        response.end('Not Found')
 
-      return
-    }
+        return
+      }
 
-    const headers = {
-      'Content-Type': CONTENT_TYPES[path.extname(filePath)] || 'application/octet-stream',
-      'X-Powered-By': name
-    }
+      const headers = {
+        'Content-Type': CONTENT_TYPES[path.extname(filePath)] || 'application/octet-stream',
+        'X-Powered-By': name
+      }
 
-    const fileContents = await readFile(filePath)
+      response.writeHead(200, headers)
 
-    response.writeHead(200, headers)
+      if (request.method === 'HEAD') {
+        response.end()
+        return
+      }
 
-    if (request.method === 'HEAD') {
-      response.end()
-    } else {
-      response.end(fileContents)
+      try {
+        const fileContents = await readFile(filePath)
+        response.end(fileContents)
+      } catch (readError) {
+        if (readError && (readError.code === 'ENOENT' || readError.code === 'ENOTDIR')) {
+          response.writeHead(404, { 'X-Powered-By': name })
+          response.end('Not Found')
+        } else {
+          response.writeHead(500, { 'X-Powered-By': name })
+          response.end('Internal Server Error')
+        }
+      }
+    } catch (error) {
+      if (error && error.code === 'ERR_MALFORMED_URL') {
+        response.writeHead(400, { 'X-Powered-By': name })
+        response.end('Bad Request')
+      } else {
+        response.writeHead(500, { 'X-Powered-By': name })
+        response.end('Internal Server Error')
+      }
     }
   })
 

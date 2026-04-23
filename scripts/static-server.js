@@ -3,9 +3,14 @@
 const { createStaticServer } = require('./helpers/static-server')
 
 const [, , rootPath = '.', portValue = '8080', name = 'octez.connect'] = process.argv
-const port = Number.parseInt(portValue, 10)
 
-if (!Number.isInteger(port) || port < 0) {
+if (!/^\d+$/.test(portValue)) {
+  throw new Error(`Invalid port: ${portValue}`)
+}
+
+const port = Number(portValue)
+
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
   throw new Error(`Invalid port: ${portValue}`)
 }
 

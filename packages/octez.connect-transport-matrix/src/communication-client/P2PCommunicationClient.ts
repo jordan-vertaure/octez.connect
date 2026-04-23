@@ -71,6 +71,26 @@ const sleep = (time: number) => {
   return new Promise((resolve) => setTimeout(resolve, time))
 }
 
+const createTimeoutSignal = (
+  timeoutMs: number
+): { signal: AbortSignal | undefined; cleanup: () => void } => {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return { signal: AbortSignal.timeout(timeoutMs), cleanup: () => {} }
+  }
+
+  if (typeof AbortController !== 'undefined') {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    return {
+      signal: controller.signal,
+      cleanup: () => clearTimeout(timeoutId)
+    }
+  }
+
+  return { signal: undefined, cleanup: () => {} }
+}
+
 /**
  * @internalapi
  */
@@ -320,18 +340,23 @@ export class P2PCommunicationClient extends CommunicationClient {
   }
 
   public async getBeaconInfo(server: string): Promise<BeaconInfoResponse> {
-    const response = await fetch(`https://${server}/_synapse/client/beacon/info`, {
-      signal: AbortSignal.timeout(10_000)
-    })
-    if (!response.ok) {
-      throw new Error(`getBeaconInfo ${server} failed: ${response.status} ${response.statusText}`)
-    }
-    const data = (await response.json()) as BeaconInfoResponse
+    const { signal, cleanup } = createTimeoutSignal(10_000)
+    try {
+      const response = await fetch(`https://${server}/_synapse/client/beacon/info`, {
+        ...(signal ? { signal } : {})
+      })
+      if (!response.ok) {
+        throw new Error(`getBeaconInfo ${server} failed: ${response.status} ${response.statusText}`)
+      }
+      const data = (await response.json()) as BeaconInfoResponse
 
-    return {
-      region: data.region,
-      known_servers: data.known_servers,
-      timestamp: Math.floor(data.timestamp)
+      return {
+        region: data.region,
+        known_servers: data.known_servers,
+        timestamp: Math.floor(data.timestamp)
+      }
+    } finally {
+      cleanup()
     }
   }
 
