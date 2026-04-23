@@ -38,6 +38,7 @@
     "@tezos-x/octez.connect-core": "4.8.3",
     "@tezos-x/octez.connect-transport-matrix": "4.8.3",
     "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
+    "@tezos-x/octez.connect-types": "4.8.3",
     "@tezos-x/octez.connect-utils": "4.8.3"
   }
 }

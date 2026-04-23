@@ -39,9 +39,11 @@
     "@tezos-x/octez.connect-transport-matrix": "4.8.3",
     "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
     "@tezos-x/octez.connect-transport-walletconnect": "4.8.3",
+    "@tezos-x/octez.connect-types": "4.8.3",
     "@tezos-x/octez.connect-ui": "4.8.3",
     "@tezos-x/octez.connect-utils": "4.8.3",
     "@walletconnect/types": "^2.23.9",
-    "broadcast-channel": "^7.3.0"
+    "broadcast-channel": "^7.3.0",
+    "bs58check": "4.0.0"
   }
 }
