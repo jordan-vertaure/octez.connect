@@ -1,4 +1,4 @@
-import { NetworkType } from '@tezos-x/octez.connect-types'
+import { NetworkType } from './NetworkType'
 
 export interface Network {
   type: NetworkType

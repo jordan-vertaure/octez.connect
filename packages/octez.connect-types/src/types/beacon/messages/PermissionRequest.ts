@@ -1,10 +1,8 @@
-import {
-  BeaconBaseMessage,
-  BeaconMessageType,
-  PermissionScope,
-  AppMetadata,
-  Network
-} from '@tezos-x/octez.connect-types'
+import { BeaconBaseMessage } from '../BeaconBaseMessage'
+import { BeaconMessageType } from '../BeaconMessageType'
+import { PermissionScope } from '../PermissionScope'
+import { AppMetadata } from '../AppMetadata'
+import { Network } from '../Network'
 
 /**
  * @category Message

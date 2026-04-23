@@ -1,16 +1,11 @@
-import {
-  AccountInfo,
-  AppMetadata,
-  BeaconMessageType,
-  ConnectionContext,
-  WalletInfo,
-  ExtensionApp,
-  DesktopApp,
-  WebApp,
-  App,
-  Network,
-  PermissionScope
-} from '@tezos-x/octez.connect-types'
+import { AccountInfo } from '../AccountInfo'
+import { AppMetadata } from '../beacon/AppMetadata'
+import { BeaconMessageType } from '../beacon/BeaconMessageType'
+import { ConnectionContext } from '../ConnectionContext'
+import { WalletInfo } from '../WalletInfo'
+import { ExtensionApp, DesktopApp, WebApp, App } from '../ui'
+import { Network } from '../beacon/Network'
+import { PermissionScope } from '../beacon/PermissionScope'
 
 export interface ResponseInput {
   request: BlockchainMessage

@@ -1,5 +1,4 @@
 import {
-  BlockExplorer,
   closeAlert,
   openAlert,
   openBugReport,
@@ -8,7 +7,7 @@ import {
   closeToast,
   openToast,
   ToastAction
-} from '@tezos-x/octez.connect-dapp'
+} from '@tezos-x/octez.connect-ui'
 import {
   BeaconErrorType,
   ExtendedPostMessagePairingResponse,
@@ -38,8 +37,9 @@ import {
   // EncryptPayloadResponseOutput,
   // EncryptionOperation
 } from '@tezos-x/octez.connect-core'
-import { shortenString } from './utils/shorten-string'
 import { isMobile, isMobileOS } from '@tezos-x/octez.connect-ui'
+import { BlockExplorer } from './utils/block-explorer'
+import { shortenString } from './utils/shorten-string'
 
 const logger = new Logger('octez.connectEvents')
 
