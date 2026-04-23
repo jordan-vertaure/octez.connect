@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-core",
-  "version": "4.8.3",
+  "version": "4.8.4",
   "description": "Core client, storage, and protocol helpers shared across the octez.connect SDK packages.",
   "author": "Trilitech",
   "license": "ISC",
@@ -38,8 +38,8 @@
     "@stablelib/nacl": "^2.0.1",
     "@stablelib/utf8": "^2.1.0",
     "@stablelib/x25519-session": "^2.0.1",
-    "@tezos-x/octez.connect-types": "4.8.3",
-    "@tezos-x/octez.connect-utils": "4.8.3",
+    "@tezos-x/octez.connect-types": "4.8.4",
+    "@tezos-x/octez.connect-utils": "4.8.4",
     "broadcast-channel": "^7.3.0",
     "bs58check": "4.0.0"
   }

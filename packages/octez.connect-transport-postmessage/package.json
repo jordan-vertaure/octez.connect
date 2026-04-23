@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-transport-postmessage",
-  "version": "4.8.3",
+  "version": "4.8.4",
   "description": "PostMessage transport for octez.connect communication with browser extensions.",
   "author": "Trilitech",
   "license": "ISC",
@@ -34,8 +34,8 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "4.8.3",
-    "@tezos-x/octez.connect-types": "4.8.3",
-    "@tezos-x/octez.connect-utils": "4.8.3"
+    "@tezos-x/octez.connect-core": "4.8.4",
+    "@tezos-x/octez.connect-types": "4.8.4",
+    "@tezos-x/octez.connect-utils": "4.8.4"
   }
 }

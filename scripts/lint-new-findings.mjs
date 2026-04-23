@@ -12,13 +12,13 @@
 // Caveat: if you modify a line that already had a finding, it counts as new.
 // That's intentional — if you touched the line, you own it.
 //
-// Base ref comes from LINT_BASE_REF, else origin/4.8.2.
+// Base ref comes from LINT_BASE_REF, else origin/4.8.4.
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { resolve, relative } from 'node:path'
 
-const baseRef = process.env.LINT_BASE_REF || 'origin/4.8.2'
+const baseRef = process.env.LINT_BASE_REF || 'origin/4.8.4'
 const cwd = process.cwd()
 
 function git(args, { allowFail = false } = {}) {

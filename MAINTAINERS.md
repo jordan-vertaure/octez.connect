@@ -21,7 +21,7 @@ This repository maintains the Trilitech octez.connect package line under the
 
 ## Release policy
 
-- Merge via pull request into `4.8.2`
+- Merge via pull request into `4.8.4`
 - Require passing CI before merge
 - Publish from signed tags through `.github/workflows/release.yml`
 - Use npm Trusted Publishers, not long-lived automation tokens

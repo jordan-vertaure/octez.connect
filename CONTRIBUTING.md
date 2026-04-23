@@ -5,7 +5,7 @@ under the `@tezos-x/octez.connect-*` scope.
 
 ## Ground rules
 
-- Open a pull request against `4.8.2`, do not push feature work directly to the
+- Open a pull request against `4.8.4`, do not push feature work directly to the
   branch.
 - Keep changes scoped and explain the user-visible impact.
 - If you port behavior from a published upstream release (e.g.

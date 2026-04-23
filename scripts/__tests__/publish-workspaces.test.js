@@ -13,7 +13,7 @@ const {
 test('getPrereleaseTag returns the prerelease channel for octez.connect versions', () => {
   assert.equal(getPrereleaseTag('4.8.4-beta.1'), 'beta')
   assert.equal(getPrereleaseTag('4.8.4-rc.0'), 'rc')
-  assert.equal(getPrereleaseTag('4.8.3'), undefined)
+  assert.equal(getPrereleaseTag('4.8.4'), undefined)
 })
 
 test('hasExplicitTagArg detects npm publish tag overrides', () => {
