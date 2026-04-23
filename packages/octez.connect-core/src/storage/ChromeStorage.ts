@@ -30,7 +30,6 @@ export class ChromeStorage implements Storage {
             resolve(JSON.parse(JSON.stringify(defaultValue)))
           } else {
             resolve(defaultValue)
-            resolve(defaultValue)
           }
         }
       })

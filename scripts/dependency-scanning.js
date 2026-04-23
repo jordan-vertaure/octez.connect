@@ -4,10 +4,12 @@ const fs = require('fs')
 const { execFileSync } = require('child_process')
 
 const { createDependencyScanningReport } = require('./helpers/dependency-scanning')
+const npmCommand = process.env.npm_execpath ? process.execPath : 'npm'
+const npmArgsPrefix = process.env.npm_execpath ? [process.env.npm_execpath] : []
 
 function runAudit() {
   try {
-    const stdout = execFileSync('npm', ['audit', '--json'], {
+    const stdout = execFileSync(npmCommand, [...npmArgsPrefix, 'audit', '--json'], {
       encoding: 'utf8'
     })
 

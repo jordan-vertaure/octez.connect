@@ -31,7 +31,7 @@
     "build": "npm run check:versions && npm run clean:dist && npm run build:packages && npm run webpack:all && npm run check:sourcemaps",
     "clean:dist": "node scripts/clean-dist.mjs",
     "build:packages": "node scripts/run-workspaces.mjs tsc --topological",
-    "serve": "static-server examples --port 8080",
+    "serve": "node scripts/static-server.js examples 8080",
     "webpack:all": "npm run webpack:sdk && npm run webpack:dapp && npm run webpack:wallet",
     "webpack:sdk": "webpack --mode=development --config webpack.config.js --entry=./packages/octez.connect-sdk/dist/cjs/index.js --output-path ./webpack_builds/sdk && terser --ecma=12 ./webpack_builds/sdk/main.js -o ./packages/octez.connect-sdk/dist/octez.connect.min.js && cp ./packages/octez.connect-sdk/dist/octez.connect.min.js ./examples/octez.connect.min.js",
     "webpack:dapp": "webpack --mode=development --entry=./packages/octez.connect-dapp/dist/cjs/index.js --output-path ./webpack_builds/dapp && terser --ecma=12 ./webpack_builds/dapp/main.js -o ./packages/octez.connect-dapp/dist/octez.connect.dapp.min.js",

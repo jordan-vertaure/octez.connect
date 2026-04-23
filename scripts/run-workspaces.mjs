@@ -10,13 +10,15 @@ if (!scriptName) {
 
 const topological = flags.includes('--topological')
 const packages = topological ? topologicallySortWorkspaces(getWorkspacePackages()) : getWorkspacePackages()
+const npmCommand = process.env.npm_execpath ? process.execPath : 'npm'
+const npmArgsPrefix = process.env.npm_execpath ? [process.env.npm_execpath] : []
 
 for (const pkg of packages) {
   if (!pkg.manifest.scripts?.[scriptName]) {
     continue
   }
 
-  const result = spawnSync('npm', ['run', scriptName], {
+  const result = spawnSync(npmCommand, [...npmArgsPrefix, 'run', scriptName], {
     cwd: pkg.directory,
     stdio: 'inherit'
   })

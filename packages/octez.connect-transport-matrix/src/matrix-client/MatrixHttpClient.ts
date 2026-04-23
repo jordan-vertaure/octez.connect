@@ -1,6 +1,5 @@
-import { keys } from '@tezos-x/octez.connect-utils'
-import { MatrixRequest, MatrixRequestParams } from './models/api/MatrixRequest'
 import { Logger } from '@tezos-x/octez.connect-core'
+import { MatrixRequest, MatrixRequestParams } from './models/api/MatrixRequest'
 
 const logger = new Logger('MatrixHttpClient')
 
@@ -16,7 +15,7 @@ const CLIENT_API_R0 = '/_matrix/client/r0'
  * Handling the HTTP connection to the matrix synapse node
  */
 export class MatrixHttpClient {
-  private readonly abortController: AbortController
+  private abortController: AbortController
 
   constructor(private readonly baseUrl: string) {
     this.abortController = new AbortController()
@@ -59,6 +58,7 @@ export class MatrixHttpClient {
 
   public async cancelAllRequests(): Promise<void> {
     this.abortController.abort('Manually cancelled')
+    this.abortController = new AbortController()
   }
 
   /**
@@ -91,7 +91,11 @@ export class MatrixHttpClient {
         signal: this.abortController.signal
       })
     } catch (error) {
-      logger.error('send', (error as Error).name, (error as Error).message)
+      if (this.isCancellationError(error)) {
+        logger.log('send', 'request cancelled')
+      } else {
+        logger.error('send', (error as Error).name, (error as Error).message)
+      }
       throw error
     }
 
@@ -135,17 +139,30 @@ export class MatrixHttpClient {
     return url
   }
 
-  private getParams(
-    _params: MatrixRequestParams<any>
+  private getParams<T>(
+    _params: MatrixRequestParams<T>
   ): { [key: string]: string | number | boolean } | undefined {
     if (!_params) {
       return undefined
     }
 
-    const params = Object.assign(_params, {})
-    keys(params).forEach((key) => params[key] === undefined && delete params[key])
+    const params: Record<string, string | number | boolean> = {}
+    for (const [key, value] of Object.entries(_params)) {
+      if (value !== undefined) {
+        params[key] = value
+      }
+    }
 
-    return params as { [key: string]: string | number | boolean }
+    return params
+  }
+
+  private isCancellationError(error: unknown): boolean {
+    return (
+      error instanceof DOMException
+        ? error.name === 'AbortError'
+        : (error as { name?: string; code?: string })?.name === 'AbortError' ||
+          (error as { name?: string; code?: string })?.code === 'ERR_CANCELED'
+    )
   }
 
   /**

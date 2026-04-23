@@ -21,7 +21,12 @@ function isSubpath(rootPath, targetPath) {
 }
 
 async function resolveFilePath(rootPath, requestUrl) {
-  const requestPath = decodeURIComponent(requestUrl.split('?')[0].split('#')[0])
+  let requestPath
+  try {
+    requestPath = decodeURIComponent(requestUrl.split('?')[0].split('#')[0])
+  } catch {
+    return undefined
+  }
   const relativePath = requestPath === '/' ? './index.html' : `.${requestPath}`
   let targetPath = path.resolve(rootPath, relativePath)
 

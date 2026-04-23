@@ -19,7 +19,7 @@ import { TezosSmartRollupPublishOperation } from './operations/SmartRollupPublis
 import { TezosSmartRollupRecoverBondOperation } from './operations/SmartRollupRecoverBond'
 import { TezosSmartRollupRefuteOperation } from './operations/SmartRollupRefute'
 import { TezosTransferTicketOperation } from './operations/TransferTicket'
-import { TezosUpdateConsensusKeyOperation } from './operations/UpdateCompanionKey'
+import { TezosUpdateConsensusKeyOperation } from './operations/UpdateConsensusKey'
 import { TezosVdfRevelationOperation } from './operations/VdfRevelation'
 import { TezosActivateAccountOperation } from './operations/ActivateAccount'
 import { TezosBallotOperation } from './operations/Ballot'
