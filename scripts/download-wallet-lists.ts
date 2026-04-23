@@ -2,7 +2,7 @@ import * as path from 'path'
 import { writeFile, mkdir } from 'fs/promises'
 import * as https from 'https'
 
-const GITHUB_RELEASES_BASE = 'https://github.com/airgap-it/beacon-wallet-list/releases/latest/download'
+const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/trilitech/octez.connect-wallet-list/main/dist'
 const BEACON_UI_DATA_DIR = path.join(process.cwd(), 'packages/octez.connect-ui/src/data')
 
 async function downloadFile(url: string): Promise<string> {
@@ -31,7 +31,7 @@ async function download() {
 
     for (const file of files) {
       console.log(`Downloading ${file}...`)
-      const content = await downloadFile(`${GITHUB_RELEASES_BASE}/${file}`)
+      const content = await downloadFile(`${GITHUB_RAW_BASE}/${file}`)
       await writeFile(path.join(BEACON_UI_DATA_DIR, file), content)
     }
 
