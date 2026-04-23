@@ -31,7 +31,7 @@
     "url": "git+https://github.com/trilitech/octez.connect.git"
   },
   "scripts": {
-    "tsc": "rollup -c",
+    "tsc": "rollup -c && tsc -p tsconfig.types.json",
     "test": "jest"
   },
   "bugs": {
