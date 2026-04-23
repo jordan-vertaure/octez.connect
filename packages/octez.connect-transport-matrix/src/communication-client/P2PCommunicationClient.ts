@@ -75,7 +75,7 @@ const createTimeoutSignal = (
   timeoutMs: number
 ): { signal: AbortSignal | undefined; cleanup: () => void } => {
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    return { signal: AbortSignal.timeout(timeoutMs), cleanup: () => {} }
+    return { signal: AbortSignal.timeout(timeoutMs), cleanup: () => undefined }
   }
 
   if (typeof AbortController !== 'undefined') {
@@ -88,7 +88,7 @@ const createTimeoutSignal = (
     }
   }
 
-  return { signal: undefined, cleanup: () => {} }
+  return { signal: undefined, cleanup: () => undefined }
 }
 
 /**
