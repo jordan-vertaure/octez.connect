@@ -1,4 +1,5 @@
-import { BeaconBaseMessage, BeaconMessageType } from '@tezos-x/octez.connect-types'
+import { BeaconBaseMessage } from '../BeaconBaseMessage'
+import { BeaconMessageType } from '../BeaconMessageType'
 
 export interface ProofOfEventChallengeRequest extends BeaconBaseMessage {
   type: BeaconMessageType.ProofOfEventChallengeRequest
