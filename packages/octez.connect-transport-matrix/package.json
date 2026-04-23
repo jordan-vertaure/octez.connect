@@ -36,6 +36,9 @@
   "dependencies": {
     "@tezos-x/octez.connect-core": "4.8.3",
     "@tezos-x/octez.connect-utils": "4.8.3",
-    "axios": "^1.8.4"
+    "axios": "^1.15.0"
+  },
+  "devDependencies": {
+    "jest-environment-jsdom": "^30.3.0"
   }
 }
