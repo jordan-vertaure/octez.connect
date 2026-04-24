@@ -1,9 +1,10 @@
 {
   "name": "@tezos-x/octez.connect-transport-walletconnect",
-  "version": "4.8.3",
-  "description": "This package contains methods to facilitate communication over the WalletConnect network.",
-  "author": "Papers AG",
+  "version": "4.8.4",
+  "description": "WalletConnect transport for octez.connect communication.",
+  "author": "Trilitech",
   "license": "ISC",
+  "homepage": "https://github.com/trilitech/octez.connect",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
@@ -23,23 +24,28 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/trilitech/octez.connect-sdk.git"
+    "url": "git+https://github.com/trilitech/octez.connect.git"
   },
   "scripts": {
     "tsc": "tsc -p tsconfig.json && tsc -p tsconfig-cjs.json",
     "test": "jest"
   },
   "bugs": {
-    "url": "https://github.com/trilitech/octez.connect-sdk/issues"
+    "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "4.8.3",
-    "@tezos-x/octez.connect-types": "4.8.3",
-    "@tezos-x/octez.connect-utils": "4.8.3",
-    "@walletconnect/sign-client": "2.18.0",
-    "elliptic": "^6.6.1"
+    "@tezos-x/octez.connect-core": "4.8.4",
+    "@tezos-x/octez.connect-types": "4.8.4",
+    "@tezos-x/octez.connect-utils": "4.8.4",
+    "@walletconnect/sign-client": "^2.23.9",
+    "@walletconnect/types": "^2.23.9",
+    "@walletconnect/utils": "^2.23.9"
   },
   "devDependencies": {
-    "@types/elliptic": "^6.4.18"
+    "@rollup/plugin-terser": "1.0.0",
+    "mocha": "11.7.5",
+    "rollup": "4.60.2",
+    "sinon": "21.1.2",
+    "static-server": "3.0.0"
   }
 }

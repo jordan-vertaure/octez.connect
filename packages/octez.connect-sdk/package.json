@@ -1,9 +1,10 @@
 {
   "name": "@tezos-x/octez.connect-sdk",
-  "version": "4.8.3",
-  "description": "The `octez.connect-sdk` simplifies and abstracts the communication between dApps and wallets over different transport layers.",
-  "author": "Andreas Gassmann <a.gassmann@papers.ch>",
+  "version": "4.8.4",
+  "description": "octez.connect SDK umbrella package for Tezos dApp and wallet communication across supported transports.",
+  "author": "Trilitech",
   "license": "ISC",
+  "homepage": "https://github.com/trilitech/octez.connect",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "unpkg": "dist/octez.connect.min.js",
@@ -24,24 +25,25 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/trilitech/octez.connect-sdk.git"
+    "url": "git+https://github.com/trilitech/octez.connect.git"
   },
   "scripts": {
     "tsc": "tsc -p tsconfig.json && tsc -p tsconfig-cjs.json"
   },
   "bugs": {
-    "url": "https://github.com/trilitech/octez.connect-sdk/issues"
+    "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-blockchain-substrate": "4.8.3",
-    "@tezos-x/octez.connect-blockchain-tezos": "4.8.3",
-    "@tezos-x/octez.connect-core": "4.8.3",
-    "@tezos-x/octez.connect-dapp": "4.8.3",
-    "@tezos-x/octez.connect-transport-matrix": "4.8.3",
-    "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
-    "@tezos-x/octez.connect-types": "4.8.3",
-    "@tezos-x/octez.connect-ui": "4.8.3",
-    "@tezos-x/octez.connect-utils": "4.8.3",
-    "@tezos-x/octez.connect-wallet": "4.8.3"
+    "@tezos-x/octez.connect-blockchain-substrate": "4.8.4",
+    "@tezos-x/octez.connect-blockchain-tezos": "4.8.4",
+    "@tezos-x/octez.connect-core": "4.8.4",
+    "@tezos-x/octez.connect-dapp": "4.8.4",
+    "@tezos-x/octez.connect-transport-matrix": "4.8.4",
+    "@tezos-x/octez.connect-transport-postmessage": "4.8.4",
+    "@tezos-x/octez.connect-transport-walletconnect": "4.8.4",
+    "@tezos-x/octez.connect-types": "4.8.4",
+    "@tezos-x/octez.connect-ui": "4.8.4",
+    "@tezos-x/octez.connect-utils": "4.8.4",
+    "@tezos-x/octez.connect-wallet": "4.8.4"
   }
 }

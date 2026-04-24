@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-packages:
+    name: publish-packages
+    if: github.repository == 'trilitech/octez.connect'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify npm 11 runner
+        run: ./scripts/npm11.sh --version
+
+      - name: Install dependencies
+        run: ./scripts/npm11.sh ci --include=optional
+
+      - name: Check workspace versions
+        run: ./scripts/npm11.sh run check:versions
+
+      - name: Build packages
+        run: ./scripts/npm11.sh run build
+
+      - name: Run unit tests
+        run: ./scripts/npm11.sh run test
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        run: ./scripts/npm11.sh run e2e:smoke
+
+      - name: Publish public packages
+        run: ./scripts/npm11.sh run publish:packages -- --tag latest

@@ -1,9 +1,10 @@
 {
   "name": "@tezos-x/octez.connect-dapp",
-  "version": "4.8.3",
-  "description": "Use this package on your dApp to instanciate a DAppClient object and communicate to wallets.",
-  "author": "Andreas Gassmann <a.gassmann@papers.ch>",
+  "version": "4.8.4",
+  "description": "octez.connect dApp client for connecting Tezos dApps to wallets.",
+  "author": "Trilitech",
   "license": "ISC",
+  "homepage": "https://github.com/trilitech/octez.connect",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "unpkg": "dist/octez.connect.dapp.min.js",
@@ -24,21 +25,25 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/trilitech/octez.connect-sdk.git"
+    "url": "git+https://github.com/trilitech/octez.connect.git"
   },
   "scripts": {
     "tsc": "tsc -p tsconfig.json && tsc -p tsconfig-cjs.json",
     "test": "jest"
   },
   "bugs": {
-    "url": "https://github.com/trilitech/octez.connect-sdk/issues"
+    "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "4.8.3",
-    "@tezos-x/octez.connect-transport-matrix": "4.8.3",
-    "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
-    "@tezos-x/octez.connect-transport-walletconnect": "4.8.3",
-    "@tezos-x/octez.connect-ui": "4.8.3",
-    "broadcast-channel": "^7.1.0"
+    "@tezos-x/octez.connect-core": "4.8.4",
+    "@tezos-x/octez.connect-transport-matrix": "4.8.4",
+    "@tezos-x/octez.connect-transport-postmessage": "4.8.4",
+    "@tezos-x/octez.connect-transport-walletconnect": "4.8.4",
+    "@tezos-x/octez.connect-types": "4.8.4",
+    "@tezos-x/octez.connect-ui": "4.8.4",
+    "@tezos-x/octez.connect-utils": "4.8.4",
+    "@walletconnect/types": "^2.23.9",
+    "broadcast-channel": "^7.3.0",
+    "bs58check": "4.0.0"
   }
 }

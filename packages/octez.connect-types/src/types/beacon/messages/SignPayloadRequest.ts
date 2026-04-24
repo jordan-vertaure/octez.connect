@@ -1,4 +1,6 @@
-import { BeaconBaseMessage, BeaconMessageType, SigningType } from '@tezos-x/octez.connect-types'
+import { BeaconBaseMessage } from '../BeaconBaseMessage'
+import { BeaconMessageType } from '../BeaconMessageType'
+import { SigningType } from '../SigningType'
 
 /**
  * @category Message

@@ -1,5 +1,3 @@
-// __tests__/DAppClient.test.ts
-import { DAppClient } from '../../src/dapp-client/DAppClient'
 import { NetworkType } from '@tezos-x/octez.connect-types'
 import { ExposedPromise } from '@tezos-x/octez.connect-utils'
 import { LocalStorage } from '@tezos-x/octez.connect-core'
@@ -131,9 +129,14 @@ jest.mock('@tezos-x/octez.connect-core', () => {
 jest.mock('@walletconnect/sign-client', () => ({}))
 jest.mock('@walletconnect/types', () => ({}))
 jest.mock('@walletconnect/utils', () => ({ getSdkError: jest.fn() }))
+jest.mock('@tezos-x/octez.connect-transport-walletconnect', () => ({
+  WalletConnectTransport: class {}
+}))
+
+const { DAppClient } = require('../../src/dapp-client/DAppClient')
 
 describe('DAppClient — basic unit tests', () => {
-  let client: DAppClient
+  let client: any
 
   beforeAll(() => {
     client = new DAppClient({

@@ -1,6 +1,6 @@
 import React from 'react'
 import Wallet from '../wallet'
-import { TopWalletsProps } from 'src/ui/common'
+import { TopWalletsProps } from '../../ui/common'
 
 const TopWallets: React.FC<TopWalletsProps> = (props: TopWalletsProps) => {
   return (

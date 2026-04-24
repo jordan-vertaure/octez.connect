@@ -1,4 +1,4 @@
-import { BeaconMessageType } from '@tezos-x/octez.connect-types'
+import { BeaconMessageType } from './BeaconMessageType'
 
 /**
  * @category Message

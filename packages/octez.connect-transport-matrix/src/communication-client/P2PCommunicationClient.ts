@@ -1,15 +1,17 @@
-import { sign } from '@stablelib/ed25519'
-import axios from 'axios'
 import {
+  ExposedPromise,
+  generateGUID,
   getHexHash,
-  toHex,
-  recipientString,
-  openCryptobox,
-  encryptCryptoboxPayload,
   decryptCryptoboxPayload,
-  secretbox_NONCEBYTES,
+  encryptCryptoboxPayload,
+  getKeypairFromSeed,
+  KeyPair,
+  openCryptobox,
+  recipientString,
   secretbox_MACBYTES,
-  getKeypairFromSeed
+  secretbox_NONCEBYTES,
+  sign,
+  toHex
 } from '@tezos-x/octez.connect-utils'
 import { MatrixClient } from '../matrix-client/MatrixClient'
 import {
@@ -35,8 +37,6 @@ import {
   Logger,
   CommunicationClient
 } from '@tezos-x/octez.connect-core'
-import { ExposedPromise, generateGUID } from '@tezos-x/octez.connect-utils'
-import { KeyPair } from '@stablelib/ed25519'
 import { hash } from '@stablelib/blake2b'
 import { encode } from '@stablelib/utf8'
 
@@ -69,6 +69,26 @@ interface BeaconInfoResponse {
 
 const sleep = (time: number) => {
   return new Promise((resolve) => setTimeout(resolve, time))
+}
+
+const createTimeoutSignal = (
+  timeoutMs: number
+): { signal: AbortSignal | undefined; cleanup: () => void } => {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return { signal: AbortSignal.timeout(timeoutMs), cleanup: () => undefined }
+  }
+
+  if (typeof AbortController !== 'undefined') {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    return {
+      signal: controller.signal,
+      cleanup: () => clearTimeout(timeoutId)
+    }
+  }
+
+  return { signal: undefined, cleanup: () => undefined }
 }
 
 /**
@@ -320,13 +340,24 @@ export class P2PCommunicationClient extends CommunicationClient {
   }
 
   public async getBeaconInfo(server: string): Promise<BeaconInfoResponse> {
-    return axios
-      .get<BeaconInfoResponse>(`https://${server}/_synapse/client/beacon/info`, { timeout: 10_000 })
-      .then((res) => ({
-        region: res.data.region,
-        known_servers: res.data.known_servers,
-        timestamp: Math.floor(res.data.timestamp)
-      }))
+    const { signal, cleanup } = createTimeoutSignal(10_000)
+    try {
+      const response = await fetch(`https://${server}/_synapse/client/beacon/info`, {
+        ...(signal ? { signal } : {})
+      })
+      if (!response.ok) {
+        throw new Error(`getBeaconInfo ${server} failed: ${response.status} ${response.statusText}`)
+      }
+      const data = (await response.json()) as BeaconInfoResponse
+
+      return {
+        region: data.region,
+        known_servers: data.known_servers,
+        timestamp: Math.floor(data.timestamp)
+      }
+    } finally {
+      cleanup()
+    }
   }
 
   public async tryJoinRooms(roomId: string, retry: number = 1): Promise<void> {

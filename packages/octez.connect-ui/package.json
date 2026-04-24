@@ -1,9 +1,10 @@
 {
   "name": "@tezos-x/octez.connect-ui",
-  "version": "4.8.3",
-  "description": "This package contains the UI part (alerts and toasts) of the octez.connect SDK.",
-  "author": "Andreas Gassmann <a.gassmann@papers.ch>",
+  "version": "4.8.4",
+  "description": "UI components and assets for octez.connect alerts and toasts.",
+  "author": "Trilitech",
   "license": "ISC",
+  "homepage": "https://github.com/trilitech/octez.connect",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
@@ -23,47 +24,54 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/trilitech/octez.connect-sdk.git"
+    "url": "git+https://github.com/trilitech/octez.connect.git"
   },
   "scripts": {
-    "tsc": "rollup -c",
+    "tsc": "rollup -c && tsc -p tsconfig.types.json",
     "test": "jest"
   },
   "bugs": {
-    "url": "https://github.com/trilitech/octez.connect-sdk/issues"
+    "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "4.8.3",
-    "@tezos-x/octez.connect-transport-postmessage": "4.8.3",
-    "@tezos-x/octez.connect-types": "4.8.3",
-    "@tezos-x/octez.connect-utils": "4.8.3",
-    "@walletconnect/utils": "2.18.0",
+    "@tezos-x/octez.connect-core": "4.8.4",
+    "@tezos-x/octez.connect-transport-postmessage": "4.8.4",
+    "@tezos-x/octez.connect-types": "4.8.4",
+    "@tezos-x/octez.connect-utils": "4.8.4",
+    "@walletconnect/sign-client": "^2.23.9",
+    "@walletconnect/utils": "^2.23.9",
     "qrcode-svg": "^1.1.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "scheduler": "^0.27.0"
   },
   "devDependencies": {
     "@rollup/plugin-babel": "^6.0.4",
-    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-commonjs": "^28.0.9",
     "@rollup/plugin-image": "^3.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-terser": "^1.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@types/chrome": "0.0.315",
-    "@types/node": "^22.14.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/chrome": "^0.1.40",
+    "@types/node": "^22.19.17",
     "@types/qrcode-svg": "^1.1.5",
-    "@types/react": "^19.1.2",
-    "@types/react-dom": "^19.1.2",
-    "@vitejs/plugin-react": "^4.4.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "postcss-import": "^16.1.0",
-    "rollup": "4.39.0",
+    "rollup": "^4.60.2",
     "rollup-plugin-postcss": "^4.0.2",
     "rollup-plugin-string": "^3.0.0",
-    "rollup-plugin-svg": "^2.0.0",
-    "rollup-plugin-typescript2": "^0.36.0",
-    "vite": "^6.2.6"
+    "rollup-plugin-typescript2": "^0.37.0",
+    "sinon": "21.1.2",
+    "static-server": "3.0.0",
+    "vite": "^8.0.9"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-darwin-arm64": "4.60.2",
+    "@rollup/rollup-linux-x64-gnu": "4.60.2"
   }
 }
