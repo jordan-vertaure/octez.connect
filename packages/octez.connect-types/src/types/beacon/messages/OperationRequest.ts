@@ -1,4 +1,6 @@
-import { BeaconBaseMessage, BeaconMessageType, Network } from '@tezos-x/octez.connect-types'
+import { BeaconBaseMessage } from '../BeaconBaseMessage'
+import { BeaconMessageType } from '../BeaconMessageType'
+import { Network } from '../Network'
 import { PartialTezosOperation } from '../../tezos/PartialTezosOperation'
 
 /**

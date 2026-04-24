@@ -1,4 +1,5 @@
-import { StorageKey, StorageKeyReturnType } from '@tezos-x/octez.connect-types'
+import { StorageKey } from './StorageKey'
+import { StorageKeyReturnType } from './StorageKeyReturnType'
 
 /**
  * @internalapi

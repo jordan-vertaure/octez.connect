@@ -10,8 +10,8 @@ import {
   P2PPairingRequest,
   NodeDistributions
 } from '@tezos-x/octez.connect-types'
-import { P2PCommunicationClient } from '@tezos-x/octez.connect-transport-matrix'
-import { KeyPair } from '@stablelib/ed25519'
+import { KeyPair } from '@tezos-x/octez.connect-utils'
+import { P2PCommunicationClient } from './communication-client/P2PCommunicationClient'
 
 const logger = new Logger('P2PTransport')
 

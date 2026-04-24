@@ -1,10 +1,8 @@
-import {
-  BeaconBaseMessage,
-  BeaconMessageType,
-  Network,
-  PermissionScope,
-  Threshold
-} from '@tezos-x/octez.connect-types'
+import { BeaconBaseMessage } from '../BeaconBaseMessage'
+import { BeaconMessageType } from '../BeaconMessageType'
+import { Network } from '../Network'
+import { PermissionScope } from '../PermissionScope'
+import { Threshold } from '../Threshold'
 import { Notification } from '../../Notification'
 
 export interface ChangeAccountRequest extends BeaconBaseMessage {

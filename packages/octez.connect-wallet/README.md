@@ -1,40 +1,23 @@
 # `@tezos-x/octez.connect-wallet`
 
-This package is part of the `@tezos-x/octez.connect-sdk` project. [Read more](https://github.com/trilitech/octez.connect)
+Use this package in your wallet to instanciate a WalletClient object and communicate to dApps.
 
-## Introduction
+This is a primary package in the Trilitech-maintained octez.connect SDK line and may be installed directly.
 
-Use this package in your wallet to instanciate a `WalletClient` object and communicate to dApps.
+## Install
 
-## Usage
-
-```typescript
-import { WalletClient } from '@tezos-x/octez.connect-wallet'
-
-const walletClient = new WalletClient({ name: "Example Wallet" });
-await walletClient.init();
-walletClient.connect((message) => {
-  // Handle incoming messages from dApps
-});
+```sh
+npm install @tezos-x/octez.connect-wallet
 ```
+## Package provenance
 
-Check our documentation for more information. [Documentation](https://octez-connect.tezos.com)
+This package is published from the Trilitech-maintained octez.connect repository:
+[trilitech/octez.connect](https://github.com/trilitech/octez.connect)
 
-## Lifecycle Management (Important for Extensions)
+- Original Beacon lineage: [airgap-it/beacon-sdk](https://github.com/airgap-it/beacon-sdk)
+- External maintenance line Trilitech may selectively import from: [ecadlabs/beacon-sdk-taquito-patches](https://github.com/ecadlabs/beacon-sdk-taquito-patches)
 
-The WalletClient maintains a persistent connection to Matrix relay servers via long-polling. Once `connect()` is called, the client polls the server every 30 seconds to receive messages from dApps.
+## Notes
 
-**For regular web pages**, this is fine because closing the page naturally terminates the connection.
-
-**For browser extensions**, this requires careful lifecycle management because background scripts persist indefinitely. Without proper management, your extension will continuously poll servers even when idle, wasting bandwidth and resources.
-
-### Recommended Pattern
-
-- **No peers** = Don't connect (nothing to poll for)
-- **Has peers** = Connect to receive messages
-- **New pairing request** = Connect on-demand
-
-See the [Chrome Extension Example](../../examples/chrome-extension/) for a complete reference implementation demonstrating:
-- Conditional initialization (only connect when peers exist)
-- Lazy initialization (connect on-demand for new pairings)
-- Proper cleanup with `destroy()`
+- Trilitech publishes these packages under the `@tezos-x/octez.connect-*` scope
+- Release notes, package policy, and the current package list live in the repository README

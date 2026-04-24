@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-unit:
+    name: build-and-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify npm 11 runner
+        run: ./scripts/npm11.sh --version
+
+      - name: Install dependencies
+        run: ./scripts/npm11.sh ci --include=optional
+
+      - name: Gate new lint findings
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          if [ -n "$PR_BASE_REF" ]; then
+            export LINT_BASE_REF="origin/$PR_BASE_REF"
+          fi
+          ./scripts/npm11.sh run lint:new
+
+      - name: Check workspace versions
+        run: ./scripts/npm11.sh run check:versions
+
+      - name: Build packages
+        run: ./scripts/npm11.sh run build
+
+      - name: Run unit tests
+        run: ./scripts/npm11.sh run test
+
+  end-to-end:
+    name: end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify npm 11 runner
+        run: ./scripts/npm11.sh --version
+
+      - name: Install dependencies
+        run: ./scripts/npm11.sh ci --include=optional
+
+      - name: Check workspace versions
+        run: ./scripts/npm11.sh run check:versions
+
+      - name: Build packages
+        run: ./scripts/npm11.sh run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        run: ./scripts/npm11.sh run e2e:smoke

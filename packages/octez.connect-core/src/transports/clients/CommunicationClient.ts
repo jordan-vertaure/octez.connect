@@ -1,6 +1,12 @@
 import { PeerInfoType } from '@tezos-x/octez.connect-types'
-import { toHex, getHexHash, sealCryptobox } from '@tezos-x/octez.connect-utils'
-import { convertPublicKeyToX25519, convertSecretKeyToX25519, KeyPair } from '@stablelib/ed25519'
+import {
+  convertPublicKeyToX25519,
+  convertSecretKeyToX25519,
+  getHexHash,
+  KeyPair,
+  sealCryptobox,
+  toHex
+} from '@tezos-x/octez.connect-utils'
 import { clientSessionKeys, serverSessionKeys, SessionKeys } from '@stablelib/x25519-session'
 import { ClientEvents } from './ClientEvents'
 /**

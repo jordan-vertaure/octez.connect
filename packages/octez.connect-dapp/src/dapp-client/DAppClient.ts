@@ -1,6 +1,4 @@
-import axios from 'axios'
 import bs58check from 'bs58check'
-import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType } from '../events'
 import {
   ConnectionContext,
   AccountInfo,
@@ -113,10 +111,10 @@ import {
 } from '@tezos-x/octez.connect-utils'
 import { messageEvents } from '../beacon-message-events'
 import { BlockExplorer } from '../utils/block-explorer'
+import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
 import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
 
 import { DAppClientOptions } from './DAppClientOptions'
-import { BeaconEventHandler } from '@tezos-x/octez.connect-dapp'
 import { DappPostMessageTransport } from '../transports/DappPostMessageTransport'
 import { DappP2PTransport } from '../transports/DappP2PTransport'
 import { DappWalletConnectTransport } from '../transports/DappWalletConnectTransport'
@@ -2840,22 +2838,32 @@ export class DAppClient extends Client {
       secretKey: Buffer.from(keypair.secretKey)
     })
 
-    const notificationResponse = await axios.post(`${url}/send`, {
-      recipient,
-      title,
-      body,
-      timestamp,
-      payload,
-      accessToken,
-      protocolIdentifier,
-      sender: {
-        name: this.name,
-        publicKey,
-        signature
-      }
+    const notificationResponse = await fetch(`${url}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient,
+        title,
+        body,
+        timestamp,
+        payload,
+        accessToken,
+        protocolIdentifier,
+        sender: {
+          name: this.name,
+          publicKey,
+          signature
+        }
+      })
     })
 
-    return notificationResponse.data
+    if (!notificationResponse.ok) {
+      throw new Error(
+        `sendNotification failed: ${notificationResponse.status} ${notificationResponse.statusText}`
+      )
+    }
+
+    return notificationResponse.json()
   }
 
   private async onNewAccount(
@@ -2866,7 +2874,7 @@ export class DAppClient extends Client {
     const tempPK: string | undefined =
       message.publicKey || (message as any).pubkey || (message as any).pubKey
 
-    const publicKey = !!tempPK ? prefixPublicKey(tempPK) : undefined
+    const publicKey = tempPK ? prefixPublicKey(tempPK) : undefined
 
     if (!publicKey && !message.address) {
       throw new Error('PublicKey or Address must be defined')

@@ -1,12 +1,16 @@
+import { Logger } from '@tezos-x/octez.connect-core'
 import { DAppClient } from '../dapp-client/DAppClient'
 import { DAppClientOptions } from '../dapp-client/DAppClientOptions'
+
+const logger = new Logger('get-instance')
 
 let _instance: DAppClient | undefined
 
 /** Get a DAppClient instance. Will make sure only one dAppClient exists. After the first instance has been created, the config will be ignored, unless "reset" is set */
 export const getDAppClientInstance = (config: DAppClientOptions, reset?: boolean): DAppClient => {
   if (_instance && reset) {
-    _instance.disconnect()
+    // sync API — kick off cleanup but surface failures rather than swallow.
+    _instance.disconnect().catch((error) => logger.error('[DAppClient] disconnect on reset failed', error))
     _instance = undefined
   }
 

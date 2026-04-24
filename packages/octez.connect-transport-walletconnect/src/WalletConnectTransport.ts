@@ -1,4 +1,3 @@
-import { KeyPair } from '@stablelib/ed25519'
 import { WalletConnectCommunicationClient } from './communication-client/WalletConnectCommunicationClient'
 import {
   ConnectionContext,
@@ -13,7 +12,7 @@ import {
 } from '@tezos-x/octez.connect-types'
 import { Transport, PeerManager, BEACON_VERSION } from '@tezos-x/octez.connect-core'
 import { SignClientTypes } from '@walletconnect/types'
-import { ExposedPromise } from '@tezos-x/octez.connect-utils'
+import { ExposedPromise, KeyPair } from '@tezos-x/octez.connect-utils'
 
 /**
  * @internalapi
@@ -71,7 +70,7 @@ export class WalletConnectTransport<
     const knownPeers = await this.getPeers()
 
     if (knownPeers.length > 0) {
-      knownPeers.map(async (peer) => this.listen(peer.publicKey))
+      await Promise.all(knownPeers.map((peer) => this.listen(peer.publicKey)))
     }
 
     await this.startOpenChannelListener()

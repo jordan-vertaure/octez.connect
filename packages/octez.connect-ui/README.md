@@ -1,30 +1,23 @@
 # `@tezos-x/octez.connect-ui`
 
-This package is part of the `@tezos-x/octez.connect-sdk` project. [Read more](https://github.com/trilitech/octez.connect)
+This package contains the UI part (alerts and toasts) of the Beacon SDK.
 
-## Introduction
+This is a lower-level support package in the Trilitech-maintained octez.connect SDK line. Most consumers should install a higher-level package instead.
 
-This package contains the UI part (alerts and toasts) of the `octez.connect-sdk`.
+## Package provenance
 
-Unless you need to import types from this package, you probably don't need to add it to your project.
+This package is published from the Trilitech-maintained octez.connect repository:
+[trilitech/octez.connect](https://github.com/trilitech/octez.connect)
 
-Check our documentation for more information. [Documentation](https://octez-connect.tezos.com)
+- Original Beacon lineage: [airgap-it/beacon-sdk](https://github.com/airgap-it/beacon-sdk)
+- External maintenance line Trilitech may selectively import from: [ecadlabs/beacon-sdk-taquito-patches](https://github.com/ecadlabs/beacon-sdk-taquito-patches)
 
-## Content Security Policy (CSP) Configuration
+## Usually install instead
 
-The Beacon UI dynamically fetches the latest wallet list from jsDelivr CDN to ensure users always see up-to-date wallet options without requiring SDK updates. The wallet registry is maintained in a separate repository: [beacon-wallet-list](https://github.com/airgap-it/beacon-wallet-list).
+- `@tezos-x/octez.connect-sdk` for the general octez.connect SDK surface
+- `@tezos-x/octez.connect-dapp` for dApp integrations
+- `@tezos-x/octez.connect-wallet` for wallet integrations
+## Notes
 
-If your application uses a Content Security Policy, add jsDelivr to your `connect-src` directive:
-
-```
-connect-src https://cdn.jsdelivr.net;
-```
-
-**Why jsDelivr?**
-- Official CDN for GitHub repositories and npm packages
-- Direct integration with GitHub - automatically serves files from GitHub releases and commits
-- Global CDN with high availability and performance
-- Automatic caching with purge API for instant updates
-- Free and reliable service for open-source projects
-
-The SDK includes a bundled fallback wallet list, so the application will continue to function if the CDN fetch fails or is blocked by CSP.
+- Trilitech publishes these packages under the `@tezos-x/octez.connect-*` scope
+- Release notes, package policy, and the current package list live in the repository README

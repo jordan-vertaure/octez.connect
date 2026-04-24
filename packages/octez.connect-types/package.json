@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-types",
-  "version": "5.0.0-beta.5",
+  "version": "5.0.0-beta.6",
   "description": "This package contains types that are used throughout the Beacon SDK.",
   "author": "Blockchain Infra <blockchain.infra@trili.tech>",
   "homepage": "https://octez-connect.tezos.com",
@@ -33,6 +33,6 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@types/chrome": "0.0.315"
+    "@types/chrome": "^0.1.40"
   }
 }

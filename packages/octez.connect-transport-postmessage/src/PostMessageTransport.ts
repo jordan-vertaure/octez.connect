@@ -12,8 +12,8 @@ import {
 } from '@tezos-x/octez.connect-types'
 import { Storage } from '@tezos-x/octez.connect-types'
 import { Transport, PeerManager, Logger, windowRef } from '@tezos-x/octez.connect-core'
+import { KeyPair } from '@tezos-x/octez.connect-utils'
 import { PostMessageClient } from './PostMessageClient'
-import { KeyPair } from '@stablelib/ed25519'
 
 const logger = new Logger('PostMessageTransport')
 

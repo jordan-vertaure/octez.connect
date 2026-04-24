@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { useEffect, useState } from 'react'
 import { Subject, Subscription } from '../../utils/subject'
-import Toast from 'src/components/toast'
+import Toast from '../../components/toast'
 import { ToastConfig } from '../common'
 
 // Import the bundled CSS as a raw string

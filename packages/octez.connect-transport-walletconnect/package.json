@@ -1,8 +1,8 @@
 {
   "name": "@tezos-x/octez.connect-transport-walletconnect",
-  "version": "5.0.0-beta.5",
+  "version": "5.0.0-beta.6",
   "description": "This package contains methods to facilitate communication over the WalletConnect network.",
-  "author": "Papers AG",
+  "author": "Blockchain Infra <blockchain.infra@trili.tech>",
   "homepage": "https://octez-connect.tezos.com",
   "license": "ISC",
   "main": "dist/cjs/index.js",
@@ -34,13 +34,11 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "5.0.0-beta.5",
-    "@tezos-x/octez.connect-types": "5.0.0-beta.5",
-    "@tezos-x/octez.connect-utils": "5.0.0-beta.5",
+    "@tezos-x/octez.connect-core": "5.0.0-beta.6",
+    "@tezos-x/octez.connect-types": "5.0.0-beta.6",
+    "@tezos-x/octez.connect-utils": "5.0.0-beta.6",
     "@walletconnect/sign-client": "2.23.6",
-    "elliptic": "^6.6.1"
-  },
-  "devDependencies": {
-    "@types/elliptic": "^6.4.18"
+    "@walletconnect/types": "^2.23.6",
+    "@walletconnect/utils": "^2.23.6"
   }
 }
