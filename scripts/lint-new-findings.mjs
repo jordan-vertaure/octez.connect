@@ -12,13 +12,12 @@
 // Caveat: if you modify a line that already had a finding, it counts as new.
 // That's intentional — if you touched the line, you own it.
 //
-// Base ref comes from LINT_BASE_REF, else origin/4.8.2.
+// Base ref comes from LINT_BASE_REF, then known remote branches, then origin/HEAD.
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { resolve, relative } from 'node:path'
 
-const baseRef = process.env.LINT_BASE_REF || 'origin/4.8.2'
 const cwd = process.cwd()
 
 function git(args, { allowFail = false } = {}) {
@@ -31,6 +30,31 @@ function git(args, { allowFail = false } = {}) {
 }
 
 let mergeBase
+function refExists(ref) {
+  return git(['rev-parse', '--verify', '--quiet', ref], { allowFail: true }).trim().length > 0
+}
+
+function resolveBaseRef() {
+  const envBaseRef = process.env.LINT_BASE_REF?.trim()
+  const candidates = [
+    envBaseRef,
+    'origin/master',
+    'origin/4.8-stable',
+    git(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { allowFail: true }).trim()
+  ].filter((ref) => ref && ref.length > 0)
+
+  for (const ref of candidates) {
+    if (refExists(ref)) return ref
+  }
+  return null
+}
+
+const baseRef = resolveBaseRef()
+if (!baseRef) {
+  console.error('Could not find a usable base ref. Set LINT_BASE_REF explicitly in CI.')
+  process.exit(2)
+}
+
 try {
   mergeBase = git(['merge-base', baseRef, 'HEAD']).trim()
 } catch (err) {
