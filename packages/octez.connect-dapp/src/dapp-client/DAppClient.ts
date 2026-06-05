@@ -286,6 +286,10 @@ export class DAppClient extends Client {
           }
           return
         }
+        if (event.key === this.storage.getPrefixedKey(StorageKey.ACCOUNTS)) {
+          await this.recoverActiveAccountFromAccountsChange()
+          return
+        }
         if (event.key === this.storage.getPrefixedKey(StorageKey.ENABLE_METRICS)) {
           this.enableMetrics = !!(await this.storage.get(StorageKey.ENABLE_METRICS))
           return
@@ -968,6 +972,32 @@ export class DAppClient extends Client {
     })
 
     return this._initPromise
+  }
+
+  /**
+   * Re-resolve the active account when the ACCOUNTS storage entry changes in
+   * another tab, so a cross-tab connection is reflected in this client.
+   * Port of ecadlabs/beacon-sdk-taquito-patches@227672f3b.
+   */
+  private async recoverActiveAccountFromAccountsChange(): Promise<void> {
+    const activeAccountIdentifier = await this.storage.get(StorageKey.ACTIVE_ACCOUNT)
+    if (!activeAccountIdentifier || activeAccountIdentifier === 'undefined') {
+      return
+    }
+
+    if (this._activeAccount.isResolved()) {
+      const activeAccount = await this.getActiveAccount()
+      if (activeAccount?.accountIdentifier === activeAccountIdentifier) {
+        return
+      }
+    }
+
+    const account = await this.getAccount(activeAccountIdentifier)
+    if (!account) {
+      return
+    }
+
+    await this.setActiveAccount(account)
   }
 
   /**
