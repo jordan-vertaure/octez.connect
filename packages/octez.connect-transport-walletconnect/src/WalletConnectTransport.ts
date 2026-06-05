@@ -124,7 +124,7 @@ export class WalletConnectTransport<
     const resolvedProtocolVersion = Number.isFinite(protocolVersion) ? protocolVersion : undefined
 
     const basePeer: any = {
-      senderId: session.peer.publicKey,
+      senderId: session.topic,
       extensionId: session.peer.metadata.name,
       id: session.peer.publicKey,
       type: 'walletconnect-pairing-response',
