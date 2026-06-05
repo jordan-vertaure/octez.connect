@@ -215,12 +215,12 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
   }
 
   private clearEvents() {
-    this.signClient?.removeAllListeners('session_event')
-    this.signClient?.removeAllListeners('session_update')
-    this.signClient?.removeAllListeners('session_delete')
-    this.signClient?.removeAllListeners('session_expire')
-    this.signClient?.removeAllListeners('session_extend')
-    this.signClient?.removeAllListeners('proposal_expire')
+    this.signClient?.removeAllListeners?.('session_event')
+    this.signClient?.removeAllListeners?.('session_update')
+    this.signClient?.removeAllListeners?.('session_delete')
+    this.signClient?.removeAllListeners?.('session_expire')
+    this.signClient?.removeAllListeners?.('session_extend')
+    this.signClient?.removeAllListeners?.('proposal_expire')
     this.signClient?.core.pairing.events.removeAllListeners('pairing_delete')
     this.signClient?.core.pairing.events.removeAllListeners('pairing_expire')
   }
@@ -268,23 +268,32 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       return
     }
 
-    // The timeout only lets cleanup continue; transportClose may still finish later.
-    await this.withTimeout(
-      this.signClient.core.relayer.transportClose(),
-      WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
-      'WalletConnect relayer transport close timed out.'
-    )
-    this.signClient.core.events.removeAllListeners()
-    this.signClient.core.relayer.events.removeAllListeners()
-    this.signClient.core.heartbeat.stop()
-    this.signClient.core.relayer.provider.events.removeAllListeners()
-    this.signClient.core.relayer.subscriber.events.removeAllListeners()
-    this.signClient.core.relayer.provider.connection.events.removeAllListeners()
-    this.clearEvents()
+    const signClient = this.signClient
 
-    this.signClient = undefined
-    this.signClientPromise = undefined
-    this.pairingRequestPromise = undefined
+    // The timeout only lets cleanup continue; transportClose may still finish later.
+    try {
+      await this.withTimeout(
+        signClient.core.relayer.transportClose(),
+        WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
+        'WalletConnect relayer transport close timed out.'
+      )
+    } catch (error: unknown) {
+      logger.warn(error instanceof Error ? error.message : String(error))
+    }
+
+    try {
+      signClient.core.events.removeAllListeners()
+      signClient.core.relayer.events.removeAllListeners()
+      signClient.core.heartbeat.stop()
+      signClient.core.relayer.provider.events.removeAllListeners()
+      signClient.core.relayer.subscriber.events.removeAllListeners()
+      signClient.core.relayer.provider.connection.events.removeAllListeners()
+      this.clearEvents()
+    } finally {
+      this.signClient = undefined
+      this.signClientPromise = undefined
+      this.pairingRequestPromise = undefined
+    }
   }
 
   private async ping() {
