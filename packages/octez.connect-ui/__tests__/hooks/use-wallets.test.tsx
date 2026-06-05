@@ -250,4 +250,33 @@ describe('useWallets hook', () => {
     const { arrangeTopWallets } = require('../../src/utils/wallets')
     expect(arrangeTopWallets).toHaveBeenCalledWith(expect.any(Array), featuredWallets)
   })
+
+  test('builds the wallet Map without throwing when the list contains undefined / id-less entries (fixes #30)', async () => {
+    const { arrangeTopWallets } = require('../../src/utils/wallets')
+    const original = (arrangeTopWallets as jest.Mock).getMockImplementation()
+    // A list with `undefined` and an entry without `id` would otherwise crash
+    // `new Map(list.map((w) => [w.id, w]))` with "Iterator value undefined is
+    // not an entry object". Override the impl so it survives re-renders.
+    ;(arrangeTopWallets as jest.Mock).mockImplementation(() => [
+      { id: 'valid', key: 'valid', name: 'Valid' },
+      undefined,
+      { name: 'no-id' }
+    ])
+    ;(getAvailableExtensions as any).mockResolvedValue([])
+
+    try {
+      let result: any
+      expect(() => {
+        ;({ result } = renderHook(() => useWallets('tezos')))
+      }).not.toThrow()
+
+      await waitFor(() => result.current.wallets instanceof Map)
+
+      expect(result.current.wallets.has('valid')).toBe(true)
+      expect(result.current.wallets.has(undefined)).toBe(false)
+      expect(result.current.wallets.size).toBe(1)
+    } finally {
+      ;(arrangeTopWallets as jest.Mock).mockImplementation(original)
+    }
+  })
 })

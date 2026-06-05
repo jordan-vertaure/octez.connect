@@ -179,8 +179,14 @@ const useWallets = (
     )
   }, [desktopList, extensionList, iOSList, webList, availableExtensions, networkType, featuredWallets])
 
-  // Memoize the final Map structure
-  const walletsMap = useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet])), [wallets])
+  // Memoize the final Map structure.
+  // Filter falsy / id-less entries first: a list containing `undefined` (or an
+  // entry without an `id`) otherwise throws "Iterator value undefined is not an
+  // entry object" when passed to `new Map(...)` (fixes #30).
+  const walletsMap = useMemo(
+    () => new Map(wallets.filter((wallet) => wallet && wallet.id).map((wallet) => [wallet.id, wallet])),
+    [wallets]
+  )
 
   return { wallets: walletsMap, availableExtensions }
 }
