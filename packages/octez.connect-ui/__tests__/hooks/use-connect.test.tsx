@@ -10,11 +10,6 @@ jest.mock('../../src/utils/get-tzip10-link', () => ({
   getTzip10Link: jest.fn().mockReturnValue('https://example.com/tzip10')
 }))
 
-const mockParseUri = jest.fn()
-jest.mock('@walletconnect/utils', () => ({
-  parseUri: (...args: any[]) => mockParseUri(...args)
-}))
-
 jest.mock('../../src/utils/platform', () => ({
   isTwBrowser: jest.fn().mockReturnValue(false),
   isAndroid: jest.fn().mockReturnValue(false),
@@ -31,7 +26,6 @@ const windowOpenMock = jest.fn()
 beforeEach(() => {
   window.open = windowOpenMock
   localStorage.clear()
-  mockParseUri.mockReset()
 })
 
 afterEach(() => {
@@ -394,12 +388,15 @@ describe('useConnect hook', () => {
       image: 'https://wcwallet.com/icon.png'
     }
     wallets.set('wallet-wc-valid', wcWallet)
-    mockParseUri.mockReturnValue({ symKey: 'abc' })
+    // useConnect now validates the WC URI directly via the inlined
+    // hasWalletConnectSymKey (no longer @walletconnect/utils.parseUri), so the
+    // payload must be a real wc: URI carrying a symKey query param.
+    const validWcPayload = 'wc:abc123@2?relay-protocol=irn&symKey=deadbeef'
 
     const { result } = renderHook(() =>
       useConnect(
         false,
-        Promise.resolve('wc-payload'),
+        Promise.resolve(validWcPayload),
         Promise.resolve('p2p-payload'),
         Promise.resolve('post-payload'),
         wallets,
@@ -419,7 +416,7 @@ describe('useConnect hook', () => {
       })
     })
 
-    expect(result.current[2]).toBe('wc-payload')
+    expect(result.current[2]).toBe(validWcPayload)
     expect(result.current[3]).toBe('install')
     expect(result.current[1]).toBe(false)
   })
@@ -437,7 +434,7 @@ describe('useConnect hook', () => {
       image: 'https://kukaiexample.com/icon.png'
     }
     wallets.set('wallet-wc-invalid', wcWalletInvalid)
-    mockParseUri.mockReturnValue({})
+    // 'invalid-wc-payload' is not a wc: URI, so hasWalletConnectSymKey returns false.
 
     const { result } = renderHook(() =>
       useConnect(
@@ -521,7 +518,7 @@ describe('useConnect hook', () => {
       descriptions: ['test']
     }
     wallets.set('wallet-newtab-invalid', newTabWallet)
-    mockParseUri.mockReturnValue({})
+    // 'invalid-wc-payload' is not a wc: URI, so hasWalletConnectSymKey returns false.
 
     const newTabMock = { opener: {}, location: { href: '' } }
     const windowOpenMock = jest.fn().mockReturnValue(newTabMock)
