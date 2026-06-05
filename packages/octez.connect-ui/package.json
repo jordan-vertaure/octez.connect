@@ -39,11 +39,8 @@
   },
   "dependencies": {
     "@tezos-x/octez.connect-core": "5.0.0-beta.6",
-    "@tezos-x/octez.connect-transport-postmessage": "5.0.0-beta.6",
     "@tezos-x/octez.connect-types": "5.0.0-beta.6",
-    "@tezos-x/octez.connect-utils": "5.0.0-beta.6",
-    "@walletconnect/utils": "2.23.6",
-    "qrcode-svg": "^1.1.0",
+    "qrcode": "^1.5.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "scheduler": "^0.27.0"
@@ -60,7 +57,6 @@
     "@testing-library/react": "^16.3.2",
     "@types/chrome": "^0.1.40",
     "@types/node": "^22.19.17",
-    "@types/qrcode-svg": "^1.1.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

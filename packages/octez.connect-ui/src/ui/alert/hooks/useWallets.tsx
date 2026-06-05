@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PostMessageTransport } from '@tezos-x/octez.connect-transport-postmessage'
 import { arrangeTopWallets, mergeWallets, parseWallets } from '../../../utils/wallets'
 import { Extension, NetworkType, ExtensionApp, DesktopApp, App, WebApp } from '@tezos-x/octez.connect-types'
 import { windowRef } from '@tezos-x/octez.connect-core'
+import { getAvailableExtensions } from '../../../utils/extensions'
+
+const isExtensionsUpdatedMessage = (event: unknown): boolean =>
+  typeof event === 'object' &&
+  event !== null &&
+  'data' in event &&
+  (event as { data: unknown }).data === 'extensionsUpdated'
 import { fetchWalletListsFromGitHub } from '../../../utils/walletListFetcher'
 import bundledTezosRegistry from '../../../data/tezos.json'
 import bundledSubstrateRegistry from '../../../data/substrate.json'
@@ -59,11 +65,11 @@ const useWallets = (
 
   // Fetch and listen for extension updates
   useEffect(() => {
-    PostMessageTransport.getAvailableExtensions().then(setAvailableExtensions)
+    getAvailableExtensions().then(setAvailableExtensions)
 
-    const handler = async (event: any) => {
-      if (event.data === 'extensionsUpdated') {
-        const extensions = await PostMessageTransport.getAvailableExtensions()
+    const handler = async (event: unknown) => {
+      if (isExtensionsUpdatedMessage(event)) {
+        const extensions = await getAvailableExtensions()
         setAvailableExtensions(extensions)
       }
     }
