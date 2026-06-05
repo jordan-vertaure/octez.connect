@@ -74,13 +74,13 @@ description: "Task list for dApp/SDK Bug Fixes & Upstream Patch Parity"
 
 ### Tests for User Story 2 ⚠️ (write first, ensure FAIL)
 
-- [ ] T008 [P] [US2] Add failing test/verifier asserting a release is rejected when any internal `package@releaseVersion` tarball is unresolvable in `scripts/__tests__/publish-workspaces.test.mjs`
+- [X] T008 [P] [US2] Add failing test/verifier asserting a release is rejected when any internal `package@releaseVersion` tarball is unresolvable in `scripts/__tests__/publish-workspaces.test.js` — done: `findUnresolvableReleases`/`buildExpectedReleaseSet` tests (10/10 pass)
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Make publishing atomic/verified in `scripts/publish-workspaces.mjs`: after publish, verify every `@tezos-x/octez.connect-*@<version>` tarball resolves; fail and name the missing package; never finalize a partial set
-- [ ] T010 [US2] Ensure `scripts/check-workspace-version.mjs` asserts all internal exact-pins equal the release version (add the check if absent)
-- [ ] T011 [US2] Add a clean-room install verification step (`npm install` + `bun add`) to the release checklist in `specs/001-dapp-bugfixes-upstream-sync/quickstart.md`
+- [X] T009 [US2] Make publishing atomic/verified in `scripts/publish-workspaces.mjs`: after publish, verify every `@tezos-x/octez.connect-*@<version>` tarball resolves; fail and name the missing package; never finalize a partial set — done (post-publish verification pass + `resolvePublishedVersion` with bounded retries)
+- [X] T010 [US2] Ensure `scripts/check-workspace-version.mjs` asserts all internal exact-pins equal the release version (add the check if absent) — already present (check-workspace-version.mjs lines 21–30)
+- [X] T011 [US2] Add a clean-room install verification step (`npm install` + `bun add`) to the release checklist in `specs/001-dapp-bugfixes-upstream-sync/quickstart.md` — updated to document the now-automated registry-resolution gate + manual clean-room confirmation
 
 **Checkpoint**: US2 verified (contract C5); release tooling stays trusted-publisher-only (Principle IV).
 
@@ -94,13 +94,13 @@ description: "Task list for dApp/SDK Bug Fixes & Upstream Patch Parity"
 
 ### Tests for User Story 3 ⚠️ (write first, ensure FAIL)
 
-- [ ] T012 [P] [US3] Add failing test: `useWallets` builds its lookup `Map` from a list containing `undefined`/`id`-less entries without throwing in `packages/octez.connect-ui/__tests__/hooks/use-wallets.test.tsx`
-- [ ] T013 [P] [US3] Add test: `new DAppClient({ name, network })` without `enableMetrics` initializes with no throw and no metrics side-effects in `packages/octez.connect-dapp/__tests__/dapp-client/DAppClient.test.ts`
+- [X] T012 [P] [US3] Add failing test: `useWallets` builds its lookup `Map` from a list containing `undefined`/`id`-less entries without throwing in `packages/octez.connect-ui/__tests__/hooks/use-wallets.test.tsx` — done (commit `5b928d49`)
+- [ ] T013 [P] [US3] Add test: `new DAppClient({ name, network })` without `enableMetrics` initializes with no throw and no metrics side-effects in `packages/octez.connect-dapp/__tests__/dapp-client/DAppClient.test.ts` — N/A in code: `enableMetrics` already defaults false (DAppClient.ts:276); dedicated test deferred (DAppClient instantiation is heavy)
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] Filter falsy / `id`-less entries before `new Map(wallets.map(...))` in `packages/octez.connect-ui/src/ui/alert/hooks/useWallets.tsx` (line ~177)
-- [ ] T015 [US3] Confirm `enableMetrics` defaults disabled and every metrics path is inert when unset in `packages/octez.connect-dapp/src/dapp-client/DAppClient.ts`; document the flag if any path still requires it
+- [X] T014 [US3] Filter falsy / `id`-less entries before `new Map(wallets.map(...))` in `packages/octez.connect-ui/src/ui/alert/hooks/useWallets.tsx` (line ~183) — done (commit `5b928d49`)
+- [X] T015 [US3] Confirm `enableMetrics` defaults disabled and every metrics path is inert when unset in `packages/octez.connect-dapp/src/dapp-client/DAppClient.ts` — confirmed: `config.enableMetrics ? true : false` (line 276); no path requires the flag
 
 **Checkpoint**: US3 functional (contract C4); valid wallet lists produce the identical Map as before.
 

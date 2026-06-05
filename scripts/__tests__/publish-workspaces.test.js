@@ -4,6 +4,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  buildExpectedReleaseSet,
+  findUnresolvableReleases,
   getPrereleaseTag,
   hasExplicitTagArg,
   resolvePublishCommand,
@@ -73,6 +75,52 @@ test('resolvePublishCommand reuses npm_execpath when npm launched the script', (
         'latest'
       ]
     }
+  )
+})
+
+test('buildExpectedReleaseSet lists every non-private workspace as name@version', () => {
+  assert.deepEqual(
+    buildExpectedReleaseSet([
+      { manifest: { name: '@tezos-x/octez.connect-core', version: '5.0.0-beta.6' } },
+      { manifest: { name: '@tezos-x/octez.connect-dapp', version: '5.0.0-beta.6' } },
+      { manifest: { name: 'octez.connect-e2e', version: '5.0.0-beta.6', private: true } }
+    ]),
+    [
+      { name: '@tezos-x/octez.connect-core', version: '5.0.0-beta.6' },
+      { name: '@tezos-x/octez.connect-dapp', version: '5.0.0-beta.6' }
+    ]
+  )
+})
+
+test('findUnresolvableReleases flags packages that do not resolve to their exact version', () => {
+  const expected = [
+    { name: '@tezos-x/octez.connect-core', version: '5.0.0-beta.6' },
+    { name: '@tezos-x/octez.connect-dapp', version: '5.0.0-beta.6' }
+  ]
+  // core resolves; dapp is missing (a partial publish left it unresolvable).
+  const resolveVersion = (name) =>
+    name === '@tezos-x/octez.connect-core' ? '5.0.0-beta.6' : null
+
+  assert.deepEqual(findUnresolvableReleases({ expected, resolveVersion }), [
+    { name: '@tezos-x/octez.connect-dapp', version: '5.0.0-beta.6' }
+  ])
+})
+
+test('findUnresolvableReleases returns empty when every package resolves exactly', () => {
+  const expected = [{ name: '@tezos-x/octez.connect-core', version: '5.0.0-beta.6' }]
+
+  assert.deepEqual(
+    findUnresolvableReleases({ expected, resolveVersion: () => '5.0.0-beta.6' }),
+    []
+  )
+})
+
+test('findUnresolvableReleases flags a stale resolution that is not the release version', () => {
+  const expected = [{ name: '@tezos-x/octez.connect-core', version: '5.0.0-beta.6' }]
+  // Registry still serves the previous release — not the one we just published.
+  assert.deepEqual(
+    findUnresolvableReleases({ expected, resolveVersion: () => '5.0.0-beta.5' }),
+    [{ name: '@tezos-x/octez.connect-core', version: '5.0.0-beta.6' }]
   )
 })
 

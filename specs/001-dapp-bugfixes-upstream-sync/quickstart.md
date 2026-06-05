@@ -50,10 +50,18 @@ npx playwright test e2e --project=firefox --grep @pairing   # or documented manu
 ```
 
 ### #15 — published packages resolve
+`scripts/publish-workspaces.mjs` now **verifies the release set automatically** after
+publishing: it resolves every non-private `@tezos-x/octez.connect-*@<version>` against
+the registry (with bounded retries for propagation lag) and `exit 1`s naming any package
+that does not resolve — so a partial publish can never finalize a registry state where an
+exact-pinned internal dependency is unresolvable.
 ```bash
-# After a (test) publish or via the publish verifier:
+# Automated gate (part of `npm run publish:packages`):
+#   "Verified N published package(s) resolve on the registry."  → exit 0
+#   "Release verification failed: ... @tezos-x/octez.connect-dapp@<version>" → exit 1
+
+# Manual clean-room confirmation (belt-and-suspenders, run from an empty dir):
 npm view @tezos-x/octez.connect-sdk@<version> dependencies   # all internal pins exist as tarballs
-# Clean-room install:
 npm install @tezos-x/octez.connect-sdk@<version>             # exit 0
 bun add @tezos-x/octez.connect-sdk@<version>                 # exit 0
 ```
