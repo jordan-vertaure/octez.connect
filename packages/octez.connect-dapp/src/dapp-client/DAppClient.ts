@@ -188,6 +188,12 @@ export class DAppClient extends Client {
 
   private readonly openRequestsOtherTabs = new Set<string>()
   /**
+   * Tracks request ids for which an Acknowledge has already been surfaced, so a
+   * wallet that re-sends Acknowledge frames does not emit duplicate events.
+   * Port of ecadlabs/beacon-sdk-taquito-patches@d82807184.
+   */
+  private readonly acknowledgedRequests = new Set<string>()
+  /**
    * A map of requests that are currently "open", meaning we have sent them to a wallet and are still awaiting a response.
    */
   private readonly openRequests = new Map<
@@ -326,15 +332,27 @@ export class DAppClient extends Client {
       message: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>,
       connectionInfo: ConnectionContext
     ): Promise<void> => {
-      const typedMessage = usesWrappedMessages(message.version)
+      const isV3WrappedMessage =
+        usesWrappedMessages(message.version) &&
+        !!(message as BeaconMessageWrapper<BeaconBaseMessage>).message
+
+      // Issue #33: a V3-versioned message can arrive without its wrapped payload.
+      // Drop it safely instead of dereferencing an undefined payload, which would
+      // throw an unhandled rejection inside the transport subscription callback.
+      if (usesWrappedMessages(message.version) && !isV3WrappedMessage) {
+        logger.warn('handleResponse', 'Received wrapped message with undefined payload', message)
+        return
+      }
+
+      const typedMessage = isV3WrappedMessage
         ? (message as BeaconMessageWrapper<BeaconBaseMessage>).message
         : (message as BeaconMessage)
 
-      let appMetadata: AppMetadata | undefined = usesWrappedMessages(message.version)
+      let appMetadata: AppMetadata | undefined = isV3WrappedMessage
         ? (typedMessage as unknown as PermissionResponseV3<string>).blockchainData?.appMetadata
         : (typedMessage as PermissionResponse).appMetadata
 
-      if (!appMetadata && usesWrappedMessages(message.version)) {
+      if (!appMetadata && isV3WrappedMessage) {
         const storedMetadata = await Promise.all([
           this.storage.get(StorageKey.TRANSPORT_P2P_PEERS_DAPP),
           this.storage.get(StorageKey.TRANSPORT_WALLETCONNECT_PEERS_DAPP),
@@ -416,16 +434,19 @@ export class DAppClient extends Client {
       }
 
       if (openRequest && typedMessage.type === BeaconMessageType.Acknowledge) {
-        this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
-        logger.log('handleResponse', `acknowledge message received for ${message.id}`)
+        if (!this.acknowledgedRequests.has(message.id)) {
+          this.acknowledgedRequests.add(message.id)
+          this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
+          logger.log('handleResponse', `acknowledge message received for ${message.id}`)
 
-        this.events
-          .emit(BeaconEvent.ACKNOWLEDGE_RECEIVED, {
-            message: typedMessage as AcknowledgeResponse,
-            extraInfo: {},
-            walletInfo: await this.getWalletInfo()
-          })
-          .catch(console.error)
+          this.events
+            .emit(BeaconEvent.ACKNOWLEDGE_RECEIVED, {
+              message: typedMessage as AcknowledgeResponse,
+              extraInfo: {},
+              walletInfo: await this.getWalletInfo()
+            })
+            .catch((emitError) => logger.error('handleResponse', emitError))
+        }
       } else if (openRequest) {
         // Define valid response types that should resolve a request
         const validResponseTypes = [
@@ -450,7 +471,8 @@ export class DAppClient extends Client {
           } else {
             openRequest.resolve({ message, connectionInfo })
           }
-          this.openRequests.delete(typedMessage.id)
+          this.openRequests.delete(message.id)
+          this.acknowledgedRequests.delete(message.id)
         } else {
           // Log unexpected message types but don't resolve the request
           logger.warn(
@@ -1085,6 +1107,7 @@ export class DAppClient extends Client {
             })
           })
         this.openRequests.clear()
+        this.acknowledgedRequests.clear()
         this.debounceSetActiveAccount = false
       }
     }
