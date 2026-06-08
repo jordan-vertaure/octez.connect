@@ -129,6 +129,17 @@ export interface DAppClientOptions {
   }>
 
   /**
+   * Explicitly disable the WalletConnect transport.
+   *
+   * WalletConnect is already opt-in (it is only built when `walletConnectOptions`
+   * is provided). This additive flag lets a DApp that does provide
+   * `walletConnectOptions` still turn the transport off without removing that
+   * configuration. When `true`, no WalletConnect transport is constructed or
+   * listened to. Absence preserves current behavior.
+   */
+  disableWalletConnect?: boolean
+
+  /**
    * The analytics instance that will be used by the SDK
    */
   analytics?: AnalyticsInterface

@@ -184,6 +184,13 @@ export class DAppClient extends Client {
   protected wcProjectId?: string
   protected wcRelayUrl?: string
 
+  /**
+   * WalletConnect is opt-in: only enabled when `walletConnectOptions` is provided
+   * and `disableWalletConnect` is not set. When false, no WC transport is built,
+   * listened to, or offered for pairing, and no default projectId is applied.
+   */
+  protected isWalletConnectEnabled: boolean = false
+
   private isGetActiveAccountHandled: boolean = false
 
   private readonly openRequestsOtherTabs = new Set<string>()
@@ -263,8 +270,16 @@ export class DAppClient extends Client {
       ...config
     })
     this.description = config.description
-    this.wcProjectId = config.walletConnectOptions?.projectId || '24469fd0a06df227b6e5f7dc7de0ff4f'
-    this.wcRelayUrl = config.walletConnectOptions?.relayUrl
+    // WalletConnect is opt-in: only when walletConnectOptions is provided and not
+    // explicitly disabled. Don't apply the default projectId otherwise (#32).
+    this.isWalletConnectEnabled =
+      Boolean(config.walletConnectOptions) && !config.disableWalletConnect
+    this.wcProjectId = this.isWalletConnectEnabled
+      ? config.walletConnectOptions?.projectId || '24469fd0a06df227b6e5f7dc7de0ff4f'
+      : undefined
+    this.wcRelayUrl = this.isWalletConnectEnabled
+      ? config.walletConnectOptions?.relayUrl
+      : undefined
 
     this.featuredWallets = config.featuredWallets
 
@@ -693,31 +708,35 @@ export class DAppClient extends Client {
 
     await this.addListener(this.p2pTransport)
 
-    const wcOptions = {
-      projectId: this.wcProjectId,
-      relayUrl: this.wcRelayUrl,
-      metadata: {
-        name: this.name,
-        description: this.description ?? '',
-        url: this.appUrl ?? '',
-        icons: this.iconUrl ? [this.iconUrl] : []
+    // WalletConnect is opt-in (#32): skip building/listening the transport when
+    // no walletConnectOptions were provided or it was explicitly disabled.
+    if (this.isWalletConnectEnabled) {
+      const wcOptions = {
+        projectId: this.wcProjectId,
+        relayUrl: this.wcRelayUrl,
+        metadata: {
+          name: this.name,
+          description: this.description ?? '',
+          url: this.appUrl ?? '',
+          icons: this.iconUrl ? [this.iconUrl] : []
+        }
       }
+
+      this.walletConnectTransport = new DappWalletConnectTransport(
+        this.name,
+        keyPair,
+        this.storage,
+        {
+          network: this.network.type,
+          opts: wcOptions
+        },
+        this.checkIfBCLeaderExists.bind(this)
+      )
+
+      this.initEvents()
+
+      await this.addListener(this.walletConnectTransport)
     }
-
-    this.walletConnectTransport = new DappWalletConnectTransport(
-      this.name,
-      keyPair,
-      this.storage,
-      {
-        network: this.network.type,
-        opts: wcOptions
-      },
-      this.checkIfBCLeaderExists.bind(this)
-    )
-
-    this.initEvents()
-
-    await this.addListener(this.walletConnectTransport)
   }
 
   private initEvents() {
@@ -848,7 +867,11 @@ export class DAppClient extends Client {
 
         await this.initInternalTransports()
 
-        if (!this.postMessageTransport || !this.p2pTransport || !this.walletConnectTransport) {
+        if (
+          !this.postMessageTransport ||
+          !this.p2pTransport ||
+          (this.isWalletConnectEnabled && !this.walletConnectTransport)
+        ) {
           return
         }
 
@@ -861,7 +884,7 @@ export class DAppClient extends Client {
             resolve(await super.init(this.postMessageTransport))
           } else if (origin === Origin.P2P) {
             resolve(await super.init(this.p2pTransport))
-          } else if (origin === Origin.WALLETCONNECT) {
+          } else if (origin === Origin.WALLETCONNECT && this.walletConnectTransport) {
             resolve(await super.init(this.walletConnectTransport))
           }
         } else {
@@ -904,7 +927,7 @@ export class DAppClient extends Client {
             .catch(console.error)
 
           walletConnectTransport
-            .listenForNewPeer((peer) => {
+            ?.listenForNewPeer((peer) => {
               logger.log('init', 'walletconnect transport peer connected', peer)
               this.analytics.track('event', 'DAppClient', 'WalletConnect Wallet connected', {
                 peerName: peer.name
@@ -939,7 +962,7 @@ export class DAppClient extends Client {
             await Promise.all([
               postMessageTransport.disconnect(),
               // p2pTransport.disconnect(), do not abort connection manually
-              walletConnectTransport.disconnect()
+              walletConnectTransport?.disconnect()
             ])
             this.postMessageTransport = this.walletConnectTransport = this.p2pTransport = undefined
             this._activeAccount.isResolved() && this.clearActiveAccount()
@@ -979,7 +1002,12 @@ export class DAppClient extends Client {
           })
 
           const walletConnectPeerInfo = new Promise<string>(async (resolve) => {
-            resolve((await walletConnectTransport.getPairingRequestInfo()).uri)
+            // When WC is disabled there is no transport to pair through (#32).
+            resolve(
+              walletConnectTransport
+                ? (await walletConnectTransport.getPairingRequestInfo()).uri
+                : ''
+            )
           })
 
           const postmessagePeerInfo = new Promise<string>(async (resolve) => {
