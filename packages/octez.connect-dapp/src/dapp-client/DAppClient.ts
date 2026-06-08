@@ -222,6 +222,17 @@ export class DAppClient extends Client {
   private _initPromiseReject: ((reason?: ErrorResponse | AbortedBeaconError) => void) | undefined
   private isInitPending: boolean = false
 
+  /**
+   * Single-flight coalescing for concurrent permission requests. While a
+   * permission request with a given set of scopes is in flight, a second
+   * `requestPermissions()` with the same scopes returns the same promise
+   * instead of starting a duplicate pairing; a call with different scopes is
+   * rejected rather than racing. Port of
+   * ecadlabs/beacon-sdk-taquito-patches@32b83dcc0.
+   */
+  private _requestPermissionsPromise: Promise<PermissionResponseOutput> | undefined
+  private _requestPermissionsKey: string | undefined
+
   private readonly activeAccountLoaded: Promise<AccountInfo | undefined>
 
   private readonly appMetadataManager: AppMetadataManager
@@ -1623,20 +1634,60 @@ export class DAppClient extends Client {
   public async requestPermissions(
     input?: RequestPermissionInput
   ): Promise<PermissionResponseOutput> {
-    if ((input as any)?.network) {
+    const scopes = this.getPermissionRequestScopes(input)
+    const requestPermissionsKey = this.getPermissionRequestKey(scopes)
+
+    // Coalesce concurrent permission requests (#32b83dcc0): a duplicate call
+    // with the same scopes shares the in-flight promise; a call with different
+    // scopes is rejected rather than racing a second pairing.
+    if (this._requestPermissionsPromise) {
+      if (this._requestPermissionsKey !== requestPermissionsKey) {
+        throw new Error(
+          'Cannot start a permission request with different scopes while another permission request is pending'
+        )
+      }
+
+      return this._requestPermissionsPromise
+    }
+
+    const requestPermissionsPromise = this.requestPermissionsInternal(scopes)
+    this._requestPermissionsPromise = requestPermissionsPromise
+    this._requestPermissionsKey = requestPermissionsKey
+
+    try {
+      return await requestPermissionsPromise
+    } finally {
+      if (this._requestPermissionsPromise === requestPermissionsPromise) {
+        this._requestPermissionsPromise = undefined
+        this._requestPermissionsKey = undefined
+      }
+    }
+  }
+
+  private getPermissionRequestScopes(input?: RequestPermissionInput): PermissionScope[] {
+    if (input && 'network' in input) {
       throw new Error(
         '[BEACON] the "network" property is no longer accepted in input. Please provide it when instantiating DAppClient.'
       )
     }
 
+    return input && input.scopes
+      ? input.scopes
+      : [PermissionScope.OPERATION_REQUEST, PermissionScope.SIGN]
+  }
+
+  private getPermissionRequestKey(scopes: PermissionScope[]): string {
+    return [...scopes].sort().join('|')
+  }
+
+  private async requestPermissionsInternal(
+    scopes: PermissionScope[]
+  ): Promise<PermissionResponseOutput> {
     const request: PermissionRequestInput = {
       appMetadata: await this.getOwnAppMetadata(),
       type: BeaconMessageType.PermissionRequest,
       network: this.network,
-      scopes:
-        input && input.scopes
-          ? input.scopes
-          : [PermissionScope.OPERATION_REQUEST, PermissionScope.SIGN]
+      scopes
     }
 
     this.analytics.track('event', 'DAppClient', 'Permission requested')

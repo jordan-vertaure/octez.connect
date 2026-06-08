@@ -1,6 +1,11 @@
 // __tests__/DAppClient.test.ts
 import { DAppClient } from '../../src/dapp-client/DAppClient'
-import { BeaconErrorType, BeaconMessageType, NetworkType } from '@tezos-x/octez.connect-types'
+import {
+  BeaconErrorType,
+  BeaconMessageType,
+  NetworkType,
+  PermissionScope
+} from '@tezos-x/octez.connect-types'
 import { ExposedPromise } from '@tezos-x/octez.connect-utils'
 import { LocalStorage } from '@tezos-x/octez.connect-core'
 import { BeaconEvent } from '../../src/events'
@@ -243,5 +248,64 @@ describe('DAppClient — abort handling', () => {
 
     // The handler should be called
     expect(pairAbortedHandler).toHaveBeenCalled()
+  })
+})
+
+describe('DAppClient — permission request coalescing (#32b83dcc0)', () => {
+  let client: DAppClient
+
+  beforeEach(() => {
+    client = new DAppClient({
+      name: 'CoalesceApp',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET
+    })
+  })
+
+  it('coalesces concurrent permission requests with the same scopes', async () => {
+    let resolveInternal: (value: any) => void = () => {}
+    const internal = jest
+      .spyOn(client as any, 'requestPermissionsInternal')
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveInternal = resolve
+          })
+      )
+
+    const first = client.requestPermissions()
+    const second = client.requestPermissions()
+    resolveInternal({ address: 'tz1coalesced' })
+
+    await expect(first).resolves.toEqual({ address: 'tz1coalesced' })
+    await expect(second).resolves.toEqual({ address: 'tz1coalesced' })
+    // The duplicate concurrent call shared the in-flight promise.
+    expect(internal).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a concurrent permission request with different scopes', async () => {
+    jest
+      .spyOn(client as any, 'requestPermissionsInternal')
+      .mockImplementation(() => new Promise(() => {})) // never settles
+
+    const first = client.requestPermissions({ scopes: [PermissionScope.SIGN] })
+
+    await expect(
+      client.requestPermissions({ scopes: [PermissionScope.OPERATION_REQUEST] })
+    ).rejects.toThrow('different scopes')
+
+    // first stays pending by design; swallow so it isn't an unhandled rejection
+    first.catch(() => undefined)
+  })
+
+  it('releases the in-flight slot after completion so a later request runs again', async () => {
+    const internal = jest
+      .spyOn(client as any, 'requestPermissionsInternal')
+      .mockResolvedValue({ address: 'tz1' })
+
+    await client.requestPermissions()
+    await client.requestPermissions()
+
+    expect(internal).toHaveBeenCalledTimes(2)
   })
 })
