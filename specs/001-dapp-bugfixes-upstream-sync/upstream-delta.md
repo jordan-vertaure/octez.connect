@@ -53,16 +53,21 @@ Also: `ca30859d6` coalesce disconnect + tear down transports → `82814a76a` ful
 
 **WC-transport lifecycle chain COMPLETE.** All `octez.connect-core` (32) + `octez.connect-transport-walletconnect` (26) unit tests green; both packages `tsc --noEmit` clean.
 
-### Exclude (13)
+### Re-classified excluded → IMPORTED (session 3, 2026-06-08)
+
+| SHA | Subject | Why re-classified |
+|-----|---------|-------------------|
+| `eef50b5b2`, `6d4dd8baa` | e2e expect null not 'undefined' after disconnect | **NOT test-only noise — required companions to `15ddcc7ca`.** Our extended `npm run e2e` failed on `p2p-flow.spec.ts` "should disconnect on both tabs": `expect(activeAccount).toBe('undefined')` got `null`. That's the *correct* post-fix behavior (`set(key, undefined)` now deletes instead of persisting the string `"undefined"`). Ported the assertion updates: `toBe('undefined')`→`toBeNull()` and `not.toBe('undefined')`→`not.toBe(null)` across `e2e/p2p-flow.spec.ts`, `e2e/wc-flow.spec.ts`, `e2e/utils.ts`. (`e2e/wc-rejection-flow.spec.ts` from upstream doesn't exist here.) |
+
+### Exclude (11)
 
 | SHA | Subject | Reason |
 |-----|---------|--------|
 | `02e9422a8`, `ab2287243`, `5ed356208` | prepare 4.8.4/4.8.4-beta.1/4.8.3-ecad releases | release-mechanics (version bumps); our line is `5.0.0-beta` under `@tezos-x/*` |
 | `abe52c43d` | route prerelease tags to npm beta dist-tag | CI/release config (we have our own `release.yml`) |
-| `eef50b5b2`, `6d4dd8baa` | e2e expect null not 'undefined' | test-only assertions on upstream e2e |
 | `5c2d96119` | clear lint:new findings | lint-chore; no behavior; on a different lineage |
 | `8dca17d6c` | Patch vulnerable build dependencies | dev-dep bump not present in our root deps |
 | `46398e10c` | Ignore local-tarballs overlay directory | gitignore only |
 | `e93de8b96` | Pin WalletConnect to 2.18.0 | **regression** — would downgrade our `^2.23.6` (lock 2.23.9); intentionally excluded |
 
-**SC-005 status**: 32 post-boundary candidates (31 enumerated + `2d9723ec6` found during session-2 porting). 11 imported & verified (`52198d37a`, `a6d20243f`, `227672f3b`, `d82807184`, `15ddcc7ca`, `b569ed65e`, `2345a6e7f`, `c3f7819de`, `bf9350740`, `e8eccd9e7`, `07304283b`) + `dce21bc25` test, 13 excluded with reasons. **Remaining pending = the dApp-lifecycle chain only** (`32b83dcc0`, `9785f5402`, `734703d92`, `2c93b9d10`, `d682738cf`, `ca30859d6`, `82814a76a`, `9e8213a88`), which is BLOCKED on hand re-expression of the `2d9723ec6` init abort-path refactor (see prerequisite-gap section). Deferred per user decision 2026-06-05. Zero unclassified.
+**SC-005 status**: 32 post-boundary candidates (31 enumerated + `2d9723ec6`, which proved already-present as `_initPromiseReject`). **14 imported & verified** (`52198d37a`, `a6d20243f`, `227672f3b`, `d82807184`, `15ddcc7ca`, `b569ed65e`, `2345a6e7f`, `c3f7819de`, `bf9350740`, `e8eccd9e7`, `07304283b`, `32b83dcc0`, `eef50b5b2`, `6d4dd8baa`) + `dce21bc25` test; **11 excluded** with reasons. **Remaining pending = the dApp-lifecycle chain (7 of 8 commits)** — `9785f5402`, `734703d92`, `2c93b9d10`, `d682738cf`, `ca30859d6` (transports-array refactor), `82814a76a`, `9e8213a88`. NOT blocked by `2d9723ec6` (already present); PAUSED per user decision (2026-06-08) as a dedicated **e2e-gated** effort, since these rewrite the dapp's core request/init/transport coordination and need extended `npm run e2e` against real transports (Principle V). Zero unclassified.
