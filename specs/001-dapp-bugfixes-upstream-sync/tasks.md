@@ -114,15 +114,15 @@ description: "Task list for dApp/SDK Bug Fixes & Upstream Patch Parity"
 
 ### Tests for User Story 4 ⚠️ (write first, ensure FAIL)
 
-- [ ] T016 [P] [US4] Add failing test: client with no `walletConnectOptions` **or** `disableWalletConnect: true` builds/listens **no** WC transport in `packages/octez.connect-dapp/__tests__/dapp-client/DAppClient.test.ts`
+- [X] T016 [P] [US4] Add failing test: client with no `walletConnectOptions` **or** `disableWalletConnect: true` builds/listens **no** WC transport in `packages/octez.connect-dapp/__tests__/dapp-client/DAppClient.test.ts` — done: 'DAppClient — WalletConnect opt-in (#32)' describe block (verifies `isWalletConnectEnabled` gating + no default projectId when disabled)
 
 ### Implementation for User Story 4
 
-- [ ] T017 [US4] Add additive `disableWalletConnect?: boolean` to `packages/octez.connect-dapp/src/dapp-client/DAppClientOptions.ts` (optional; absence preserves current behavior — contract C2)
-- [ ] T018 [US4] Skip constructing/listening `walletConnectTransport` when WC options are absent or disabled (and don't apply the default project-id) in `packages/octez.connect-dapp/src/dapp-client/DAppClient.ts` (~lines 249, 670)
-- [ ] T019 [US4] Make `PAIR_INIT` `walletConnectPeerInfo` compartment-safe (resolve the URI before emit / emit a non-Promise value) in `packages/octez.connect-dapp/src/dapp-client/DAppClient.ts` (~line 944); verify the consumer in `packages/octez.connect-dapp/src/events.ts` (`showPairAlert`, ~line 539)
-- [ ] T020 [P] [US4] Add a Firefox-targeted Playwright pairing check (tag `@pairing`) asserting the web-wallet action renders in `e2e/wc-flow.spec.ts` (or a new `e2e/firefox-pairing.spec.ts`); document the MV3 manual repro in `specs/001-dapp-bugfixes-upstream-sync/quickstart.md`
-- [ ] T021 [US4] Add regression assertion that Chrome (both wallet kinds) and Firefox extension-wallet pairing are unchanged in `e2e/base-flow.spec.ts`
+- [X] T017 [US4] Add additive `disableWalletConnect?: boolean` to `packages/octez.connect-dapp/src/dapp-client/DAppClientOptions.ts` (optional; absence preserves current behavior — contract C2) — done
+- [X] T018 [US4] Skip constructing/listening `walletConnectTransport` when WC options are absent or disabled (and don't apply the default project-id) in `packages/octez.connect-dapp/src/dapp-client/DAppClient.ts` — done: `isWalletConnectEnabled` gate in constructor + `initInternalTransports`; init-flow guards (all-ready check, WC `listenForNewPeer`, abort handler, peer-info, WALLETCONNECT active-account branch)
+- [ ] T019 [US4] Make `PAIR_INIT` `walletConnectPeerInfo` compartment-safe (resolve the URI before emit / emit a non-Promise value) in `packages/octez.connect-dapp/src/dapp-client/DAppClient.ts`; verify the consumer in `packages/octez.connect-dapp/src/events.ts` (`showPairAlert`) — DEFERRED: converting the lazy peer-info Promise to an eager string changes WC-init timing for all browsers and needs Firefox MV3 e2e (T020/T021) to validate; not runnable in this environment. Disabled-case guard applied (resolves '' when WC off).
+- [ ] T020 [P] [US4] Add a Firefox-targeted Playwright pairing check (tag `@pairing`) asserting the web-wallet action renders in `e2e/wc-flow.spec.ts` (or a new `e2e/firefox-pairing.spec.ts`); document the MV3 manual repro in `specs/001-dapp-bugfixes-upstream-sync/quickstart.md` — DEFERRED (e2e not runnable here; pairs with T019)
+- [ ] T021 [US4] Add regression assertion that Chrome (both wallet kinds) and Firefox extension-wallet pairing are unchanged in `e2e/base-flow.spec.ts` — DEFERRED (e2e not runnable here)
 
 **Checkpoint**: US4 functional (contracts C2, C3); no public-type break (Principle I).
 
