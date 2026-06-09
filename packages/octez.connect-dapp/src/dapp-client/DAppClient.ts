@@ -104,7 +104,13 @@ import {
   getKeypairFromSeed
 } from '@tezos-x/octez.connect-utils'
 import { messageEvents } from '../beacon-message-events'
-import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
+import {
+  BeaconEvent,
+  BeaconEventHandlerFunction,
+  BeaconEventType,
+  BeaconEventHandler,
+  InvalidAccountDeactivatedReason
+} from '../events'
 import { BlockExplorer } from '../utils/block-explorer'
 import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
 
@@ -1198,10 +1204,7 @@ export class DAppClient extends Client {
   }
 
   private async deactivateInvalidAccountState(
-    reason:
-      | 'missing_active_account'
-      | 'invalid_active_account_storage'
-      | 'storage_validation_failed'
+    reason: InvalidAccountDeactivatedReason
   ): Promise<void> {
     if (this.hasEmittedInvalidAccountDeactivated) {
       return
@@ -1210,7 +1213,7 @@ export class DAppClient extends Client {
     this.hasEmittedInvalidAccountDeactivated = true
     logger.log('deactivateInvalidAccountState', reason)
     await this.resetInvalidState(false)
-    await this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED)
+    await this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED, { reason })
   }
 
   private async isInvalidState(account: AccountInfo) {
