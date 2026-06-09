@@ -51,6 +51,13 @@ import { generateGUID, getAddressFromPublicKey, isPublicKeySC } from '@tezos-x/o
 const TEZOS_PLACEHOLDER = 'tezos'
 const BEACON_SDK_VERSION = 'beacon_sdk_version'
 const logger = new Logger('WalletConnectCommunicationClient')
+const WALLETCONNECT_INIT_TIMEOUT_MS = 15000
+const WALLETCONNECT_CONNECT_TIMEOUT_MS = 60000
+const WALLETCONNECT_PAIRING_PING_TIMEOUT_MS = 10000
+const WALLETCONNECT_SESSION_VALIDATION_TIMEOUT_MS = 5000
+const WALLETCONNECT_SESSION_APPROVAL_TIMEOUT_MS = 60000
+const WALLETCONNECT_SESSION_EXTEND_TIMEOUT_MS = 10000
+const WALLETCONNECT_DISCONNECT_TIMEOUT_MS = 10000
 
 export interface PermissionScopeParam {
   networks: NetworkType[]
@@ -99,6 +106,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
   private static instance: WalletConnectCommunicationClient
   public signClient: Client | undefined
+  private signClientPromise: Promise<Client | undefined> | undefined
+  private pairingRequestPromise: Promise<ExtendedWalletConnectPairingRequest> | undefined
   public storage: WCStorage = new WCStorage()
   private session: SessionTypes.Struct | undefined
   private activeAccountOrPbk: string | undefined
@@ -221,6 +230,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       this.clearEvents()
       // no need to invoke `closeSignClinet` as the other tab already closed the connection
       this.signClient = undefined
+      this.signClientPromise = undefined
+      this.pairingRequestPromise = undefined
       this.clearState()
       this.messageIds = []
 
@@ -249,7 +260,12 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       return
     }
 
-    await this.signClient.core.relayer.transportClose()
+    // The timeout only lets cleanup continue; transportClose may still finish later.
+    await this.withTimeout(
+      this.signClient.core.relayer.transportClose(),
+      WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
+      'WalletConnect relayer transport close timed out.'
+    )
     this.signClient.core.events.removeAllListeners()
     this.signClient.core.relayer.events.removeAllListeners()
     this.signClient.core.heartbeat.stop()
@@ -259,6 +275,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     this.clearEvents()
 
     this.signClient = undefined
+    this.signClientPromise = undefined
+    this.pairingRequestPromise = undefined
   }
 
   private async ping() {
@@ -613,7 +631,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
     const lastIndex = signClient.session.keys.length - 1
 
-    if (lastIndex > -1) {
+    if (lastIndex > -1 && !forceNewConnection) {
       const restoredSession = signClient.session.get(signClient.session.keys[lastIndex])
 
       // Validate session is not stale
@@ -635,20 +653,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
     logger.warn('before create')
 
-    const permissionScopeParams: PermissionScopeParam = {
-      networks: [this.wcOptions.network],
-      events: [],
-      methods: [
-        PermissionScopeMethods.GET_ACCOUNTS,
-        PermissionScopeMethods.OPERATION_REQUEST,
-        PermissionScopeMethods.SIGN
-      ]
-    }
-    const optionalPermissionScopeParams: PermissionScopeParam = {
-      networks: [this.wcOptions.network],
-      events: [PermissionScopeEvents.REQUEST_ACKNOWLEDGED],
-      methods: []
-    }
+    const permissionScopeParams = this.getRequiredPermissionScopeParams()
+    const optionalPermissionScopeParams = this.getOptionalPermissionScopeParams()
 
     const connectParams = {
       requiredNamespaces: {
@@ -666,11 +672,13 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       await Promise.race([
         signClient.connect(connectParams),
         new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error('The connection timed out.')), 60000)
+          setTimeout(() => reject(new Error('The connection timed out.')), WALLETCONNECT_CONNECT_TIMEOUT_MS)
         )
       ]).catch((error) => {
         logger.error(`Init error: ${error.message}`)
-        localStorage && localStorage.setItem(StorageKey.WC_INIT_ERROR, error.message)
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(StorageKey.WC_INIT_ERROR, error.message)
+        }
         throw new Error(error.message)
       })
 
@@ -683,8 +691,11 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
     let hasResponse = false
 
-    signClient.core.pairing
-      .ping({ topic })
+    this.withTimeout(
+      signClient.core.pairing.ping({ topic }),
+      WALLETCONNECT_PAIRING_PING_TIMEOUT_MS,
+      'WalletConnect pairing ping timed out.'
+    )
       .then(async () => {
         if (!hasResponse) {
           // Only show "waiting for acknowledge" message if pong arrives before response
@@ -692,9 +703,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
           fun && fun('pending')
         }
       })
-      .catch((err) => {
-        console.error('--------', err)
-      })
+      .catch(() => {})
 
     approval()
       .then((session) => {
@@ -963,15 +972,25 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
   }
 
   public async getPairingRequestInfo(): Promise<ExtendedWalletConnectPairingRequest> {
-    let _uri = '',
-      _topic = ''
+    if (!this.pairingRequestPromise) {
+      this.pairingRequestPromise = this.createPairingRequestInfo().finally(() => {
+        this.pairingRequestPromise = undefined
+      })
+    }
+
+    return this.pairingRequestPromise
+  }
+
+  private async createPairingRequestInfo(): Promise<ExtendedWalletConnectPairingRequest> {
+    let _uri = ''
+    let _topic = ''
     try {
       logger.warn('getPairingRequestInfo')
       const { uri, topic } = (await this.init(true)) ?? { uri: '', topic: '' }
       _uri = uri
       _topic = topic
-    } catch (error: any) {
-      console.warn(error.message)
+    } catch (error: unknown) {
+      logger.warn(error instanceof Error ? error.message : String(error))
     }
 
     return new ExtendedWalletConnectPairingRequest(
@@ -989,30 +1008,36 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       return
     }
 
-    await this.closeSessions()
+    const closedSessions = await this.closeSessions()
     const signClient = (await this.getSignClient())!
 
     const pairings = signClient.pairing.getAll() ?? []
     pairings.length &&
       (await Promise.allSettled(
         pairings.map((pairing) =>
-          signClient.disconnect({
-            topic: pairing.topic,
-            reason: {
-              code: 0, // TODO: Use constants
-              message: 'Force new connection'
-            }
-          })
+              this.withTimeout(
+                signClient.disconnect({
+                  topic: pairing.topic,
+                  reason: {
+                    code: 0, // TODO: Use constants
+                    message: 'Force new connection'
+                  }
+                }),
+                WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
+                'WalletConnect pairing disconnect timed out.'
+              )
         )
       ))
-    await this.closeSignClient()
-    this.isMobileOS() && (await this.storage.resetState())
-    this.isMobileOS() && this.storage.notify('RESET')
+    if (closedSessions || pairings.length > 0 || this.isMobileOS()) {
+      await this.closeSignClient()
+      this.isMobileOS() && (await this.storage.resetState())
+      this.isMobileOS() && this.storage.notify('RESET')
+    }
   }
 
-  private async closeSessions() {
+  private async closeSessions(): Promise<boolean> {
     if (!this.signClient) {
-      return
+      return false
     }
 
     const signClient = (await this.getSignClient())!
@@ -1021,17 +1046,22 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     sessions.length &&
       (await Promise.allSettled(
         sessions.map((session) =>
-          signClient.disconnect({
-            topic: (session as any).topic,
-            reason: {
-              code: 0, // TODO: Use constants
-              message: 'Force new connection'
-            }
-          })
+              this.withTimeout(
+                signClient.disconnect({
+                  topic: (session as any).topic,
+                  reason: {
+                    code: 0, // TODO: Use constants
+                    message: 'Force new connection'
+                  }
+                }),
+                WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
+                'WalletConnect session disconnect timed out.'
+              )
         )
       ))
 
     this.clearState()
+    return sessions.length > 0
   }
 
   private async openSession(): Promise<SessionTypes.Struct> {
@@ -1044,20 +1074,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       throw new Error('Transport error.')
     }
 
-    const permissionScopeParams: PermissionScopeParam = {
-      networks: [this.wcOptions.network],
-      events: [],
-      methods: [
-        PermissionScopeMethods.GET_ACCOUNTS,
-        PermissionScopeMethods.OPERATION_REQUEST,
-        PermissionScopeMethods.SIGN
-      ]
-    }
-    const optionalPermissionScopeParams: PermissionScopeParam = {
-      networks: [this.wcOptions.network],
-      events: [PermissionScopeEvents.REQUEST_ACKNOWLEDGED],
-      methods: []
-    }
+    const permissionScopeParams = this.getRequiredPermissionScopeParams()
+    const optionalPermissionScopeParams = this.getOptionalPermissionScopeParams()
 
     const connectParams = {
       requiredNamespaces: {
@@ -1081,11 +1099,15 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       const { approval }: { approval: () => Promise<SessionTypes.Struct> } = await Promise.race([
         signClient.connect(connectParams),
         new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error('The connection timed out.')), 60000)
+          setTimeout(() => reject(new Error('The connection timed out.')), WALLETCONNECT_CONNECT_TIMEOUT_MS)
         )
       ])
       logger.debug('before await approal', [pairingTopic])
-      const session = await approval()
+      const session = await this.withTimeout(
+        approval(),
+        WALLETCONNECT_SESSION_APPROVAL_TIMEOUT_MS,
+        'WalletConnect session approval timed out.'
+      )
       logger.debug('after await approal, have session', [pairingTopic])
       // if I have successfully opened a session and I already have one opened
       if (session?.controller !== this.session?.controller) {
@@ -1137,6 +1159,33 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       logger.debug('Nope, aborting', [pairingTopic])
 
       throw new InvalidSession('No session set.' + pairingTopic)
+    }
+  }
+
+  private getRequiredPermissionScopeParams(): PermissionScopeParam {
+    return {
+      networks: [this.wcOptions.network],
+      events: [],
+      methods: [
+        PermissionScopeMethods.GET_ACCOUNTS,
+        PermissionScopeMethods.OPERATION_REQUEST,
+        PermissionScopeMethods.SIGN
+      ]
+    }
+  }
+
+  private getOptionalPermissionScopeParams(): PermissionScopeParam {
+    return {
+      networks: [this.wcOptions.network],
+      events: [PermissionScopeEvents.REQUEST_ACKNOWLEDGED],
+      // WalletConnect 2.23+ normalizes deprecated requiredNamespaces into
+      // optionalNamespaces. Keep the required Tezos methods here too so
+      // CAIP-25-aligned wallets receive a complete optional Tezos namespace.
+      methods: [
+        PermissionScopeMethods.GET_ACCOUNTS,
+        PermissionScopeMethods.OPERATION_REQUEST,
+        PermissionScopeMethods.SIGN
+      ]
     }
   }
 
@@ -1291,13 +1340,19 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       this.messageIds = [] // reset
     }
 
-    await this.signClient?.disconnect({
-      topic: session.topic,
-      reason: {
-        code: 0, // TODO: Use constants
-        message: 'Force new connection'
-      }
-    })
+    if (this.signClient) {
+      await this.withTimeout(
+        this.signClient.disconnect({
+          topic: session.topic,
+          reason: {
+            code: 0, // TODO: Use constants
+            message: 'Force new connection'
+          }
+        }),
+        WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
+        'WalletConnect active session disconnect timed out.'
+      )
+    }
   }
 
   private validateNetworkAndAccount(network: string, account: string) {
@@ -1411,29 +1466,66 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       'wss://eu-central-1.relay.walletconnect.com',
       'wss://ap-southeast-1.relay.walletconnect.com'
     ])
-    const errMessages = new Set()
+    const errMessages = new Set<string>()
 
     for (const relayUrl of urls) {
       try {
-        return await Client.init({ ...this.wcOptions.opts, relayUrl })
-      } catch (err: any) {
-        errMessages.add(err.message)
-        logger.warn(`Failed to connect to ${relayUrl}: ${err.message}`)
+        return await this.initSignClientWithTimeout(relayUrl)
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        errMessages.add(message)
+        logger.warn(`Failed to connect to ${relayUrl}: ${message}`)
       }
     }
+
     throw new Error(`Failed to connect to relayer: ${Array.from(errMessages).join(',')}`)
   }
 
-  private async getSignClient(): Promise<Client | undefined> {
-    if (this.signClient === undefined) {
-      try {
-        this.signClient = await this.tryConnectToRelayer()
-        this.subscribeToSessionEvents(this.signClient)
-      } catch (error: any) {
-        logger.error(error.message)
-        localStorage && localStorage.setItem(StorageKey.WC_INIT_ERROR, error.message)
-        return undefined
+  private async initSignClientWithTimeout(relayUrl: string | undefined): Promise<Client> {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        Client.init({ ...this.wcOptions.opts, relayUrl }),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('WalletConnect initialization timed out.')),
+            WALLETCONNECT_INIT_TIMEOUT_MS
+          )
+        })
+      ])
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout)
       }
+    }
+  }
+
+  private async getSignClient(): Promise<Client | undefined> {
+    if (this.signClient !== undefined) {
+      return this.signClient
+    }
+
+    if (!this.signClientPromise) {
+      this.signClientPromise = this.createSignClient().finally(() => {
+        this.signClientPromise = undefined
+      })
+    }
+
+    return this.signClientPromise
+  }
+
+  private async createSignClient(): Promise<Client | undefined> {
+    try {
+      this.signClient = await this.tryConnectToRelayer()
+      this.subscribeToSessionEvents(this.signClient)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error(message)
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(StorageKey.WC_INIT_ERROR, message)
+      }
+
+      return undefined
     }
 
     return this.signClient
@@ -1507,7 +1599,11 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         this.lastExtensionAttempt = now
 
         try {
-          await signClient.extend({ topic: this.session.topic })
+          await this.withTimeout(
+            signClient.extend({ topic: this.session.topic }),
+            WALLETCONNECT_SESSION_EXTEND_TIMEOUT_MS,
+            'WalletConnect session extension timed out.'
+          )
 
           // Update our session reference with new expiry
           const updatedSession = signClient.session.get(this.session.topic)
@@ -1556,7 +1652,11 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         return false
       }
 
-      await signClient.ping({ topic: session.topic })
+      await this.withTimeout(
+        signClient.ping({ topic: session.topic }),
+        WALLETCONNECT_SESSION_VALIDATION_TIMEOUT_MS,
+        'WalletConnect session validation ping timed out.'
+      )
       logger.debug('Session validation passed: session is valid')
       return true
     } catch (err: any) {
@@ -1573,15 +1673,35 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     try {
       const signClient = await this.getSignClient()
       if (signClient) {
-        await signClient.disconnect({
-          topic: session.topic,
-          reason: getSdkError('USER_DISCONNECTED')
-        })
+        await this.withTimeout(
+          signClient.disconnect({
+            topic: session.topic,
+            reason: getSdkError('USER_DISCONNECTED')
+          }),
+          WALLETCONNECT_DISCONNECT_TIMEOUT_MS,
+          'WalletConnect stale session disconnect timed out.'
+        )
       }
       logger.debug('Stale session cleaned up successfully', session.topic)
     } catch (err: any) {
       logger.warn('Error cleaning up stale session', err.message)
       // Continue even if cleanup fails - session is stale
+    }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+        })
+      ])
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
     }
   }
 }
