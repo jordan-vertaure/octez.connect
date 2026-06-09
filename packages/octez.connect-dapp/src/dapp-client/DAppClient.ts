@@ -195,6 +195,8 @@ export class DAppClient extends Client {
     >
   >()
 
+  private readonly acknowledgedRequests = new Set<string>()
+
   /**
    * The currently active account. For all requests that are associated to a specific request (operation request, signing request),
    * the active account is used to determine the network and destination wallet
@@ -323,17 +325,18 @@ export class DAppClient extends Client {
       message: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>,
       connectionInfo: ConnectionContext
     ): Promise<void> => {
-      const typedMessage =
-        message.version === '3'
-          ? (message as BeaconMessageWrapper<BeaconBaseMessage>).message
-          : (message as BeaconMessage)
+      const isV3WrappedMessage = message.version === '3' && 'message' in message
+
+      const typedMessage = isV3WrappedMessage
+        ? message.message
+        : (message as BeaconMessage)
 
       let appMetadata: AppMetadata | undefined =
-        message.version === '3'
+        isV3WrappedMessage
           ? (typedMessage as unknown as PermissionResponseV3<string>).blockchainData?.appMetadata
           : (typedMessage as PermissionResponse).appMetadata
 
-      if (!appMetadata && message.version === '3') {
+      if (!appMetadata && isV3WrappedMessage) {
         const storedMetadata = await Promise.all([
           this.storage.get(StorageKey.TRANSPORT_P2P_PEERS_DAPP),
           this.storage.get(StorageKey.TRANSPORT_WALLETCONNECT_PEERS_DAPP),
@@ -408,16 +411,19 @@ export class DAppClient extends Client {
       }
 
       if (openRequest && typedMessage.type === BeaconMessageType.Acknowledge) {
-        this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
-        logger.log('handleResponse', `acknowledge message received for ${message.id}`)
+        if (!this.acknowledgedRequests.has(message.id)) {
+          this.acknowledgedRequests.add(message.id)
+          this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
+          logger.log('handleResponse', `acknowledge message received for ${message.id}`)
 
-        this.events
-          .emit(BeaconEvent.ACKNOWLEDGE_RECEIVED, {
-            message: typedMessage as AcknowledgeResponse,
-            extraInfo: {},
-            walletInfo: await this.getWalletInfo()
-          })
-          .catch(console.error)
+          this.events
+            .emit(BeaconEvent.ACKNOWLEDGE_RECEIVED, {
+              message: typedMessage as AcknowledgeResponse,
+              extraInfo: {},
+              walletInfo: await this.getWalletInfo()
+            })
+            .catch((emitError) => logger.error('handleResponse', emitError))
+        }
       } else if (openRequest) {
         if (typedMessage.type === BeaconMessageType.PermissionResponse && appMetadata) {
           await this.appMetadataManager.addAppMetadata(appMetadata)
@@ -428,7 +434,8 @@ export class DAppClient extends Client {
         } else {
           openRequest.resolve({ message, connectionInfo })
         }
-        this.openRequests.delete(typedMessage.id)
+        this.openRequests.delete(message.id)
+        this.acknowledgedRequests.delete(message.id)
       } else {
         if (typedMessage.type === BeaconMessageType.Disconnect) {
           await handleDisconnect()
@@ -1074,6 +1081,7 @@ export class DAppClient extends Client {
             })
           })
         this.openRequests.clear()
+        this.acknowledgedRequests.clear()
         this.debounceSetActiveAccount = false
       }
     }
