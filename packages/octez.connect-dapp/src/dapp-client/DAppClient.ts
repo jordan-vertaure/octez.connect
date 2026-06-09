@@ -230,7 +230,11 @@ export class DAppClient extends Client {
 
   private _requestPermissionsKey: string | undefined
 
+  private _sdkSecretSeedPromise: Promise<string> | undefined
+
   private readonly activeAccountLoaded: Promise<AccountInfo | undefined>
+
+  private readonly storageValidated: Promise<void>
 
   private readonly appMetadataManager: AppMetadataManager
 
@@ -245,6 +249,10 @@ export class DAppClient extends Client {
   private readonly beaconIDB = new IndexedDBStorage('beacon', ['bug_report', 'metrics'])
 
   private debounceSetActiveAccount: boolean = false
+
+  // Constructor-time invalid storage recovery can race through multiple async paths.
+  // Keep this guard scoped to those startup paths.
+  private hasEmittedInvalidAccountDeactivated: boolean = false
 
   private multiTabChannel = new MultiTabChannel(
     'octez.connect-sdk-channel',
@@ -316,6 +324,13 @@ export class DAppClient extends Client {
       .then(async (activeAccountIdentifier) => {
         if (activeAccountIdentifier) {
           const account = await this.accountManager.getAccount(activeAccountIdentifier)
+
+          if (!account) {
+            await this.deactivateInvalidAccountState('missing_active_account')
+
+            return undefined
+          }
+
           await this.setActiveAccount(account)
           return account
         } else {
@@ -325,8 +340,7 @@ export class DAppClient extends Client {
       })
       .catch(async (storageError) => {
         logger.error(storageError)
-        await this.resetInvalidState(false)
-        this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED)
+        await this.deactivateInvalidAccountState('invalid_active_account_storage')
         return undefined
       })
 
@@ -474,7 +488,7 @@ export class DAppClient extends Client {
       }
     }
 
-    this.storageValidator
+    this.storageValidated = this.storageValidator
       .validate()
       .then(async (isValid) => {
         const account = await this.activeAccountLoaded
@@ -493,8 +507,10 @@ export class DAppClient extends Client {
 
           const nowValid = await this.storageValidator.validate()
 
-          if (!nowValid) {
-            this.resetInvalidState(false)
+          if (!nowValid && account) {
+            await this.deactivateInvalidAccountState('storage_validation_failed')
+          } else if (!nowValid) {
+            await this.resetInvalidState(false)
           }
         }
 
@@ -508,6 +524,7 @@ export class DAppClient extends Client {
         }
       })
       .catch((err) => logger.error(err.message))
+    this.retainStorageValidationPromise()
 
     this.sendMetrics(
       'enable-metrics?' + this.addQueryParam('version', SDK_VERSION),
@@ -677,10 +694,7 @@ export class DAppClient extends Client {
   }
 
   public async initInternalTransports(): Promise<void> {
-    const seed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
-    if (!seed) {
-      throw new Error('Secret seed not found')
-    }
+    const seed = await this.getOrCreateSDKSecretSeed()
     const keyPair = await getKeypairFromSeed(seed)
 
     if (this.postMessageTransport || this.p2pTransport || this.walletConnectTransport) {
@@ -726,6 +740,45 @@ export class DAppClient extends Client {
     this.initEvents()
 
     await this.addListener(this.walletConnectTransport)
+  }
+
+  private async getOrCreateSDKSecretSeed(): Promise<string> {
+    if (this._sdkSecretSeedPromise) {
+      return this._sdkSecretSeedPromise
+    }
+
+    this._sdkSecretSeedPromise = this.loadOrCreateSDKSecretSeed()
+      .finally(() => {
+        this._sdkSecretSeedPromise = undefined
+      })
+      .catch((error) => {
+        throw error
+      })
+
+    return this._sdkSecretSeedPromise
+  }
+
+  private async loadOrCreateSDKSecretSeed(): Promise<string> {
+    const existingSeed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
+    if (this.isValidSDKSecretSeed(existingSeed)) {
+      return existingSeed
+    }
+
+    await this.storage.delete(StorageKey.BEACON_SDK_SECRET_SEED)
+    this._keyPair = new ExposedPromise()
+    this._beaconId = new ExposedPromise()
+    await this.initSDK()
+
+    const restoredSeed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
+    if (this.isValidSDKSecretSeed(restoredSeed)) {
+      return restoredSeed
+    }
+
+    throw new Error('Secret seed not found')
+  }
+
+  private isValidSDKSecretSeed(seed: unknown): seed is string {
+    return typeof seed === 'string' && seed !== '' && seed !== 'undefined' && seed !== 'null'
   }
 
   private initEvents() {
@@ -1076,6 +1129,28 @@ export class DAppClient extends Client {
     return this._activeAccount.promise
   }
 
+  private retainStorageValidationPromise(): void {
+    // Constructor validation is intentionally fire-and-forget, but retaining
+    // the promise gives tests a deterministic hook without changing public API.
+    this.storageValidated.catch((err) => logger.error(err.message))
+  }
+
+  private async deactivateInvalidAccountState(
+    reason:
+      | 'missing_active_account'
+      | 'invalid_active_account_storage'
+      | 'storage_validation_failed'
+  ): Promise<void> {
+    if (this.hasEmittedInvalidAccountDeactivated) {
+      return
+    }
+
+    this.hasEmittedInvalidAccountDeactivated = true
+    logger.log('deactivateInvalidAccountState', reason)
+    await this.resetInvalidState(false)
+    await this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED)
+  }
+
   private async isInvalidState(account: AccountInfo) {
     const activeAccount = await this._activeAccount.promise
     return !activeAccount
@@ -1084,11 +1159,14 @@ export class DAppClient extends Client {
   }
 
   private async resetInvalidState(emit: boolean = true) {
-    this.accountManager.removeAllAccounts()
+    await this.accountManager.removeAllAccounts()
     this._activeAccount = ExposedPromise.resolve<AccountInfo | undefined>(undefined)
-    this.storage.set(StorageKey.ACTIVE_ACCOUNT, undefined)
-    emit && this.events.emit(BeaconEvent.INVALID_ACTIVE_ACCOUNT_STATE)
-    !emit && this.hideUI(['alert'])
+    await this.storage.delete(StorageKey.ACTIVE_ACCOUNT)
+    if (emit) {
+      await this.events.emit(BeaconEvent.INVALID_ACTIVE_ACCOUNT_STATE)
+    } else {
+      await this.hideUI(['alert'])
+    }
     await Promise.all([
       this.postMessageTransport?.disconnect(),
       this.walletConnectTransport?.disconnect()
