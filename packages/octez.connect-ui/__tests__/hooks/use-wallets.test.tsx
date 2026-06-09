@@ -241,4 +241,27 @@ describe('useWallets hook', () => {
     const { arrangeTopWallets } = require('../../src/utils/wallets')
     expect(arrangeTopWallets).toHaveBeenCalledWith(expect.any(Array), featuredWallets)
   })
+
+  // Regression for #30: a wallet list containing `undefined` or id-less
+  // entries previously threw "Iterator value undefined is not an entry
+  // object" while building the lookup Map. The hook must tolerate them and
+  // still map the valid wallets.
+  test('builds the wallet Map without throwing on undefined / id-less entries (#30)', async () => {
+    const { arrangeTopWallets } = require('../../src/utils/wallets')
+    ;(arrangeTopWallets as jest.Mock).mockImplementationOnce(() => [
+      undefined,
+      { name: 'No Id Wallet' },
+      { id: 'validWallet', name: 'Valid Wallet' }
+    ])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([])
+
+    let result: any
+    expect(() => {
+      ;({ result } = renderHook(() => useWallets()))
+    }).not.toThrow()
+
+    await waitFor(() => expect(result.current.wallets).toBeInstanceOf(Map))
+    expect(result.current.wallets.has('validWallet')).toBe(true)
+    expect(result.current.wallets.has(undefined)).toBe(false)
+  })
 })

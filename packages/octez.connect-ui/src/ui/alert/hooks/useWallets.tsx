@@ -109,8 +109,17 @@ const useWallets = (networkType?: NetworkType, featuredWallets?: string[]) => {
     )
   }, [availableExtensions, networkType, featuredWallets])
 
-  // Memoize the final Map structure
-  const walletsMap = useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet])), [wallets])
+  // Memoize the final Map structure.
+  // Guard against falsy / id-less entries: building a Map from a list that
+  // can contain `undefined` (or wallets without an id) throws
+  // "Iterator value undefined is not an entry object" (#30).
+  const walletsMap = useMemo(
+    () =>
+      new Map(
+        wallets.filter((wallet) => wallet && wallet.id).map((wallet) => [wallet.id, wallet])
+      ),
+    [wallets]
+  )
 
   return { wallets: walletsMap, availableExtensions }
 }
