@@ -1,6 +1,6 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
 import useWallets from '../../src/ui/alert/hooks/useWallets'
-import { PostMessageTransport } from '@tezos-x/octez.connect-transport-postmessage'
+import { getAvailableExtensions } from '../../src/utils/extensions'
 import { NetworkType } from '@tezos-x/octez.connect-types'
 
 // =====================================================================
@@ -83,11 +83,9 @@ jest.mock('../../src/ui/alert/wallet-lists', () => ({
 }))
 
 // =====================================================================
-// Mock PostMessageTransport so we can control the returned available extensions.
-jest.mock('@tezos-x/octez.connect-transport-postmessage', () => ({
-  PostMessageTransport: {
-    getAvailableExtensions: jest.fn()
-  }
+// Mock extension discovery so we can control the returned available extensions.
+jest.mock('../../src/utils/extensions', () => ({
+  getAvailableExtensions: jest.fn()
 }))
 
 // =====================================================================
@@ -130,7 +128,7 @@ describe('useWallets hook', () => {
       link: 'http://new.link'
     }
 
-    ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([fakeExtension])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([fakeExtension])
 
     // Render the hook.
     const { result } = renderHook(() => useWallets())
@@ -165,7 +163,7 @@ describe('useWallets hook', () => {
 
   test('updates available extensions on "extensionsUpdated" message event', async () => {
     // Initially return an empty array.
-    ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([])
 
     const { result } = renderHook(() => useWallets())
 
@@ -184,7 +182,7 @@ describe('useWallets hook', () => {
       link: 'http://updated.link'
     }
     // Set up the mock to return the updated extension.
-    ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([updatedExtension])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([updatedExtension])
 
     // Simulate dispatching a message event.
     await act(async () => {
@@ -202,7 +200,7 @@ describe('useWallets hook', () => {
 
   test('respects networkType parameter for web wallets', async () => {
     // For this test, pass networkType as 'testnet' to match our dummy webList.
-    ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([])
 
     const { result } = renderHook(() => useWallets(NetworkType.GHOSTNET))
 
@@ -219,7 +217,7 @@ describe('useWallets hook', () => {
   })
 
   test('removes event listener on unmount', async () => {
-    ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([])
 
     const { unmount, result } = renderHook(() => useWallets())
     await waitFor(() => result.current.wallets instanceof Map)
@@ -231,7 +229,7 @@ describe('useWallets hook', () => {
   test('passes featuredWallets parameter to arrangeTopWallets', async () => {
     // This test checks that the featuredWallets parameter is passed along.
     const featuredWallets = ['custom1', 'custom2']
-    ;(PostMessageTransport.getAvailableExtensions as any).mockResolvedValueOnce([])
+    ;(getAvailableExtensions as jest.Mock).mockResolvedValueOnce([])
 
     renderHook(() => useWallets(undefined, featuredWallets))
     // Wait for the effect to run.
