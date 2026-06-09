@@ -51,7 +51,7 @@ export const pairWithBeaconWallet = async (browser: Browser) => {
   await expect(dapp.locator('#activeAccount')).toHaveText('tz1RAf7CZDoa5Z94RdE2VMwfrRWeyiNAXTrw', {
     timeout: 30_000
   })
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 
   return [dapp, dappCtx, wallet, walletCtx] as const
 }
@@ -107,7 +107,7 @@ export const pairWithWCWallet = async (browser: Browser) => {
   await expect(dapp.locator('#activeAccount')).toHaveText('tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb', {
     timeout: 30_000
   })
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 
   return [dapp, dappCtx, wallet, walletCtx] as const
 }
