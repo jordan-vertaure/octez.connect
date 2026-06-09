@@ -120,7 +120,7 @@ export class WalletConnectTransport<
     }
     return [
       {
-        senderId: session.peer.publicKey,
+        senderId: session.topic,
         extensionId: session.peer.metadata.name,
         id: session.peer.publicKey,
         type: 'walletconnect-pairing-response',
