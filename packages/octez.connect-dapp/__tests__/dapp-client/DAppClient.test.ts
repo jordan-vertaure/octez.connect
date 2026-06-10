@@ -252,6 +252,24 @@ describe('DAppClient — invalid account deactivation guard (#734703d92)', () =>
   })
 })
 
+describe('DAppClient — destroyed guard (#d682738cf)', () => {
+  it('reports isDestroyed and rejects further use once destroyed', async () => {
+    const client = new DAppClient({
+      name: 'TestApp',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET
+    })
+    expect(client.isDestroyed()).toBe(false)
+
+    // Set the flag directly to isolate assertNotDestroyed from destroy()'s teardown.
+    ;(client as any).destroyed = true
+
+    expect(client.isDestroyed()).toBe(true)
+    await expect(client.getActiveAccount()).rejects.toThrow('destroyed')
+    await expect(client.requestPermissions()).rejects.toThrow('destroyed')
+  })
+})
+
 describe('DAppClient — abort handling', () => {
   let client: DAppClient
 

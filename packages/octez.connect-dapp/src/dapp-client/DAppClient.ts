@@ -246,6 +246,8 @@ export class DAppClient extends Client {
 
   private _sdkSecretSeedPromise: Promise<string> | undefined
 
+  private destroyed = false
+
   private readonly activeAccountLoaded: Promise<AccountInfo | undefined>
 
   private readonly storageValidated: Promise<void>
@@ -938,15 +940,88 @@ export class DAppClient extends Client {
    * as it frees internal subscriptions to the transport and therefore the instance may no longer work properly.
    * If you wish to disconnect your dApp, use `disconnect` instead.
    */
-  async destroy(): Promise<void> {
+  public async destroy(): Promise<void> {
+    this.destroyed = true
+
     await this.createStateSnapshot()
+    await this.destroyInternalTransports()
     await super.destroy()
+  }
+
+  private async destroyInternalTransports(): Promise<void> {
+    this.abortPendingInit()
+
+    const transports: (
+      | DappPostMessageTransport
+      | DappP2PTransport
+      | DappWalletConnectTransport
+    )[] = []
+    if (this.postMessageTransport) {
+      transports.push(this.postMessageTransport)
+    }
+    if (this.p2pTransport) {
+      transports.push(this.p2pTransport)
+    }
+    if (this.walletConnectTransport) {
+      transports.push(this.walletConnectTransport)
+    }
+
+    if (transports.length > 0) {
+      await this.cleanup(transports)
+
+      await Promise.all(
+        transports.map(async (transport) => {
+          await transport.disconnect()
+
+          if ('doClientCleanup' in transport) {
+            await transport.doClientCleanup()
+          }
+        })
+      )
+
+      this.postMessageTransport = this.p2pTransport = this.walletConnectTransport = undefined
+      await this.setTransport(undefined)
+    }
+    await this.multiTabChannel.close()
+  }
+
+  private abortPendingInit(): void {
+    this._initPromiseReject?.(this.createAbortedError())
+    this._initPromise = undefined
+    this._initPromiseReject = undefined
+    this._requestPermissionsPromise = undefined
+    this._requestPermissionsKey = undefined
+  }
+
+  private createAbortedError(id: string = ''): ErrorResponse {
+    return {
+      type: BeaconMessageType.Error,
+      id,
+      senderId: '',
+      version: '2',
+      errorType: BeaconErrorType.ABORTED_ERROR
+    }
+  }
+
+  /**
+   * @internal
+   */
+  public isDestroyed(): boolean {
+    return this.destroyed
+  }
+
+  private assertNotDestroyed(): void {
+    if (this.destroyed) {
+      throw new Error('DAppClient has been destroyed and cannot be used again.')
+    }
   }
 
   public async init(
     transport?: Transport<any>,
     substratePairing?: boolean
   ): Promise<TransportType> {
+    this.assertNotDestroyed()
+
     if (this._initPromise) {
       return this._initPromise
     }
@@ -1183,6 +1258,8 @@ export class DAppClient extends Client {
    * Returns the active account
    */
   public async getActiveAccount(): Promise<AccountInfo | undefined> {
+    this.assertNotDestroyed()
+
     return this._activeAccount.promise
   }
 
@@ -1260,10 +1337,10 @@ export class DAppClient extends Client {
 
     // when I'm resetting the activeAccount
     if (!account && this._activeAccount.isResolved() && (await this.getActiveAccount())) {
-      const transport = await this.transport
+      const transport = this._transport.isResolved() ? await this.transport : undefined
       const activeAccount = await this.getActiveAccount()
 
-      if (!transport || !activeAccount) {
+      if (!activeAccount) {
         return
       }
 
@@ -1279,21 +1356,7 @@ export class DAppClient extends Client {
             type: 'DISCONNECT'
           })
         }
-        Array.from(this.openRequests.entries())
-          .filter(([id]) => id !== SESSION_UPDATE_REQUEST_ID)
-          .forEach(([id, promise]) => {
-            promise.reject({
-              type: BeaconMessageType.Error,
-              errorType: BeaconErrorType.ABORTED_ERROR,
-              id,
-              senderId: '',
-              version: '2'
-            })
-            this.clearOpenRequest(id)
-          })
-        this.openRequests.clear()
-        this.acknowledgedRequests.clear()
-        this.clearAllOpenRequestTimeouts()
+        this.abortOpenRequests()
         this.debounceSetActiveAccount = false
       }
     }
@@ -1810,6 +1873,8 @@ export class DAppClient extends Client {
   public async requestPermissions(
     input?: RequestPermissionInput
   ): Promise<PermissionResponseOutput> {
+    this.assertNotDestroyed()
+
     const scopes = this.getPermissionRequestScopes(input)
     const requestPermissionsKey = this.getPermissionRequestKey(scopes)
 
@@ -3046,6 +3111,7 @@ export class DAppClient extends Client {
     }
 
     await this.clearActiveAccount()
+    this.abortOpenRequests()
     if (!(transport instanceof WalletConnectTransport)) {
       try {
         await transport.disconnect()
@@ -3150,6 +3216,19 @@ export class DAppClient extends Client {
   private clearAllOpenRequestTimeouts(): void {
     this.openRequestTimeouts.forEach((timeout) => clearTimeout(timeout))
     this.openRequestTimeouts.clear()
+  }
+
+  private abortOpenRequests(): void {
+    Array.from(this.openRequests.entries())
+      .filter(([id]) => id !== SESSION_UPDATE_REQUEST_ID)
+      .forEach(([id, promise]) => {
+        promise.reject(this.createAbortedError(id))
+        this.clearOpenRequest(id)
+      })
+    this.openRequests.clear()
+    this.openRequestsOtherTabs.clear()
+    this.acknowledgedRequests.clear()
+    this.clearAllOpenRequestTimeouts()
   }
 
   private async sendNotificationWithAccessToken(notification: {
