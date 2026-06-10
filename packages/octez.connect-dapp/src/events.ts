@@ -45,7 +45,7 @@ const logger = new Logger('octez.connectEvents')
 
 const SUCCESS_TIMER: number = 5 * 1000
 
-type RPCError = {
+interface RPCError {
   kind: string
   id: string
   contract_handle?: string

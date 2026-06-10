@@ -71,18 +71,19 @@ export class OutgoingResponseInterceptor {
     }: OutgoingResponseInterceptorOptions = config
 
     const wrappedMessage:
-      | BeaconMessageWrapper<PermissionResponseV3<string>>
-      | BeaconMessageWrapper<BlockchainResponseV3<string>> = msg as any
+      | BeaconMessageWrapper<PermissionResponseV3>
+      | BeaconMessageWrapper<BlockchainResponseV3> = msg as any
 
     logger.log('WRAPPED MESSAGE', wrappedMessage)
 
-    const v3Message: PermissionResponseV3<string> | BlockchainResponseV3<string> =
+    const v3Message: PermissionResponseV3 | BlockchainResponseV3 =
       wrappedMessage.message
 
     logger.log('LOGGING OUTGOING V3', v3Message, appMetadataManager)
 
     if (v3Message === undefined) {
       interceptorCallback(msg as any)
+
       return
     }
 
@@ -94,7 +95,7 @@ export class OutgoingResponseInterceptor {
     switch (v3Message.type) {
       case BeaconMessageType.PermissionResponse:
         {
-          const response: BeaconMessageWrapper<PermissionResponseV3<string>> = {
+          const response: BeaconMessageWrapper<PermissionResponseV3> = {
             id: wrappedMessage.id,
             version: request.version,
             senderId,
@@ -139,7 +140,7 @@ export class OutgoingResponseInterceptor {
           //   appMetadataManager,
           //   msg.senderId
           // )
-          const response: BeaconMessageWrapper<BlockchainResponseV3<string>> = {
+          const response: BeaconMessageWrapper<BlockchainResponseV3> = {
             id: wrappedMessage.id,
             version: request.version,
             senderId,

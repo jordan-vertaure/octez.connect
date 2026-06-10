@@ -66,6 +66,7 @@ export function mapWCErrorToBeaconError(error: Error): {
   // Check WC error code first (official WalletConnect errors)
   if (typeof wcError.code === 'number' && WC_CODE_TO_ERROR_MAP[wcError.code]) {
     const mapping = WC_CODE_TO_ERROR_MAP[wcError.code]
+
     return {
       errorType: mapping.type,
       errorCode: mapping.code,

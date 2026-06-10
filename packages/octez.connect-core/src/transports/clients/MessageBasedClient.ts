@@ -1,5 +1,3 @@
-import { BEACON_VERSION } from '../../constants'
-import { getPreferredMessageProtocolVersion } from '../../message-protocol'
 import {
   decryptCryptoboxPayload,
   encryptCryptoboxPayload,
@@ -8,8 +6,10 @@ import {
   secretbox_NONCEBYTES,
   secretbox_MACBYTES
 } from '@tezos-x/octez.connect-utils'
-import { CommunicationClient } from './CommunicationClient'
 import { PostMessagePairingRequest, PostMessagePairingResponse } from '@tezos-x/octez.connect-types'
+import { BEACON_VERSION } from '../../constants'
+import { getPreferredMessageProtocolVersion } from '../../message-protocol'
+import { CommunicationClient } from './CommunicationClient'
 
 /**
  * @internalapi

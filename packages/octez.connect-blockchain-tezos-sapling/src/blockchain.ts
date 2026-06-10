@@ -9,9 +9,9 @@ import {
   Network,
   PermissionScope
 } from '@tezos-x/octez.connect-types'
-import { TezosSaplingPermissionResponse } from './types/messages/permission-response'
 import bundledTezosSaplingRegistry from '@tezos-x/octez.connect-ui/data/tezos-sapling.json'
 import { loadWalletLists } from '@tezos-x/octez.connect-utils'
+import { TezosSaplingPermissionResponse } from './types/messages/permission-response'
 
 const { desktopList, extensionList, iOSList, webList } = loadWalletLists(bundledTezosSaplingRegistry)
 
@@ -33,10 +33,10 @@ export class TezosSaplingBlockchain implements Blockchain {
     iOSList: App[]
   }> {
     return {
-      extensionList: extensionList,
-      desktopList: desktopList,
-      webList: webList,
-      iOSList: iOSList
+      extensionList,
+      desktopList,
+      webList,
+      iOSList
     }
   }
 

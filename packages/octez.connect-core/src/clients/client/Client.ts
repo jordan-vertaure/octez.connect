@@ -19,11 +19,11 @@ import { BeaconClient } from '../beacon-client/BeaconClient'
 import { AccountManager } from '../../managers/AccountManager'
 import { getSenderId } from '../../utils/get-sender-id'
 import { Logger } from '../../utils/Logger'
-import { ClientOptions } from './ClientOptions'
 import { Transport } from '../../transports/Transport'
 import { Serializer } from '../../Serializer'
 import { usesWrappedMessages } from '../../utils/message-utils'
 import { getPreferredMessageProtocolVersion } from '../../message-protocol'
+import { ClientOptions } from './ClientOptions'
 
 const logger = new Logger('Client')
 
@@ -58,7 +58,7 @@ export abstract class Client extends BeaconClient {
 
   protected readonly matrixNodes: NodeDistributions
 
-  private transportListeners: Map<
+  private readonly transportListeners: Map<
     TransportType,
     (message: any, connectionInfo: ConnectionContext) => Promise<void>
   > = new Map()
@@ -179,7 +179,7 @@ export abstract class Client extends BeaconClient {
    *
    * @param transport A transport that can be provided by the user
    */
-  public async init(transport: Transport<any, any, any>): Promise<TransportType> {
+  public async init(transport: Transport<any>): Promise<TransportType> {
     if (this._transport.isResolved()) {
       return (await this.transport).type
     }
@@ -313,11 +313,13 @@ export abstract class Client extends BeaconClient {
 
     const transport = await this.transport
     const peers = await transport.getPeers()
+
     return peers.find((peerInfo) => peerInfo.publicKey === publicKey)
   }
 
   private getLocalProtocolVersion(): number {
     const localPreferredRaw = Number(getPreferredMessageProtocolVersion())
+
     return Number.isFinite(localPreferredRaw) && localPreferredRaw >= DEFAULT_PROTOCOL_VERSION
       ? localPreferredRaw
       : DEFAULT_PROTOCOL_VERSION
@@ -339,6 +341,7 @@ export abstract class Client extends BeaconClient {
   protected getPeerProtocolVersion(peer?: PeerInfo): number {
     const localVersion = this.getLocalProtocolVersion()
     const peerVersion = this.extractPeerProtocolVersion(peer)
+
     return Math.min(peerVersion, localVersion)
   }
 }

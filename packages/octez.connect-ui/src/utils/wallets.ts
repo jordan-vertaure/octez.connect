@@ -37,9 +37,10 @@ export function parseWallets(wallets: Wallet[]): Wallet[] {
   return wallets.map((wallet) => {
     const tokens = ['Web', 'web', 'App', 'app', 'Mobile', 'mobile']
     for (let i = 0; i < tokens.length; i++) {
-      if (wallet.name.includes(tokens[i])) wallet.name = wallet.name.replace(tokens[i], '')
+      if (wallet.name.includes(tokens[i])) {wallet.name = wallet.name.replace(tokens[i], '')}
     }
     wallet.name = wallet.name.trim()
+
     return wallet
   })
 }
@@ -69,13 +70,14 @@ export function arrangeTopWallets(arr: MergedWallet[], walletIds: string[]): Mer
   const itemsToMoveToFront = []
   const itemsToSortByName = []
 
-  for (let item of arr) {
-    let position: number | undefined = undefined
+  for (const item of arr) {
+    let position: number | undefined
     idsToMoveToFront.some((id, index) => {
       const isWallet = item.key.startsWith(id)
       if (isWallet) {
         position = index
       }
+
       return isWallet
     })
 
@@ -132,5 +134,6 @@ export function mergeWallets(wallets: Wallet[]): MergedWallet[] {
       mergedWallets.push(newWallet)
     }
   }
+
   return mergedWallets
 }

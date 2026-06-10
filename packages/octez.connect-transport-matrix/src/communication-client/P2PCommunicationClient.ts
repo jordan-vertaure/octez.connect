@@ -13,14 +13,6 @@ import {
   sign,
   toHex
 } from '@tezos-x/octez.connect-utils'
-import { MatrixClient } from '../matrix-client/MatrixClient'
-import {
-  MatrixClientEvent,
-  MatrixClientEventType,
-  MatrixClientEventMessageContent
-} from '../matrix-client/models/MatrixClientEvent'
-import { MatrixMessageType } from '../matrix-client/models/MatrixMessage'
-import { MatrixRoom } from '../matrix-client/models/MatrixRoom'
 import {
   Storage,
   P2PPairingRequest,
@@ -40,6 +32,14 @@ import {
 } from '@tezos-x/octez.connect-core'
 import { hash } from '@stablelib/blake2b'
 import { encode } from '@stablelib/utf8'
+import { MatrixClient } from '../matrix-client/MatrixClient'
+import {
+  MatrixClientEvent,
+  MatrixClientEventType,
+  MatrixClientEventMessageContent
+} from '../matrix-client/models/MatrixClientEvent'
+import { MatrixMessageType } from '../matrix-client/models/MatrixMessage'
+import { MatrixRoom } from '../matrix-client/models/MatrixRoom'
 
 const logger = new Logger('P2PCommunicationClient')
 
@@ -68,9 +68,7 @@ interface BeaconInfoResponse {
   timestamp: number
 }
 
-const sleep = (time: number) => {
-  return new Promise((resolve) => setTimeout(resolve, time))
-}
+const sleep = (time: number) => new Promise((resolve) => setTimeout(resolve, time))
 
 /**
  * @internalapi
@@ -170,15 +168,15 @@ export class P2PCommunicationClient extends CommunicationClient {
     }
 
     // 1) Flatten out [region, server] pairs and shuffle for randomness
-    type Probe = { server: string; region: Regions }
-    const probes: Probe[] = Object.entries(this.ENABLED_RELAY_SERVERS as Record<string, string[]>)
+    interface Probe { server: string; region: Regions }
+    const probes: Probe[] = Object.entries(this.ENABLED_RELAY_SERVERS)
       .flatMap(([region, servers]) =>
         servers.map((server) => ({ server, region: region as Regions }))
       )
       .sort(() => Math.random() - 0.5)
 
     // 2) Fire off all probes in parallel, each catching its own errors
-    type Result = { server: string; region: Regions; time: number; timestamp: number }
+    interface Result { server: string; region: Regions; time: number; timestamp: number }
     const results: Result[] = []
 
     const probePromises = probes.map(({ server, region }) =>
@@ -213,6 +211,7 @@ export class P2PCommunicationClient extends CommunicationClient {
     const best = results.reduce((a, b) => (b.time < a.time ? b : a))
 
     this.selectedRegion = best.region
+
     return { server: best.server, timestamp: best.timestamp }
   }
 
@@ -236,6 +235,7 @@ export class P2PCommunicationClient extends CommunicationClient {
         if (this.relayServer === currentPromise) {
           this.relayServer = refreshedPromise
         }
+
         return { server: relayServer.server, timestamp: info.timestamp }
       } catch (error) {
         logger.log(
@@ -252,6 +252,7 @@ export class P2PCommunicationClient extends CommunicationClient {
           // Another caller replaced the promise while we were waiting.
           // Reuse that result instead of racing into a second discovery.
           const latestRelayServer = await replacementRelayPromise.promise
+
           return { server: latestRelayServer.server, timestamp: latestRelayServer.timestamp }
         }
         // Fall through to discovery below
@@ -262,6 +263,7 @@ export class P2PCommunicationClient extends CommunicationClient {
     // Reuse it instead of replacing it with a new promise.
     if (this.relayServer) {
       const relayServer = await this.relayServer.promise
+
       return { server: relayServer.server, timestamp: relayServer.timestamp }
     }
 
@@ -284,6 +286,7 @@ export class P2PCommunicationClient extends CommunicationClient {
             timestamp: info.timestamp,
             localTimestamp: new Date().getTime()
           })
+
           return { server: node, timestamp: info.timestamp }
         } catch (error) {
           logger.log(
@@ -436,6 +439,7 @@ export class P2PCommunicationClient extends CommunicationClient {
       if (this.loginCounter <= (this.ENABLED_RELAY_SERVERS[this.selectedRegion] ?? []).length) {
         this.loginCounter++
         this.start()
+
         return
       } else {
         logger.error(
@@ -610,6 +614,7 @@ export class P2PCommunicationClient extends CommunicationClient {
     } catch (error: any) {
       if (error?.code === 'ERR_CANCELED') {
         logger.log('sendMessage', 'request cancelled while stopping transport')
+
         return
       }
 
@@ -623,6 +628,7 @@ export class P2PCommunicationClient extends CommunicationClient {
         } catch (innerError: any) {
           if (innerError?.code === 'ERR_CANCELED') {
             logger.log('sendMessage', 'inner request cancelled while stopping transport')
+
             return
           }
 
@@ -875,6 +881,7 @@ export class P2PCommunicationClient extends CommunicationClient {
     } catch (error: any) {
       if (error?.code === 'ERR_CANCELED') {
         logger.log('sendPairingResponse', 'request cancelled while stopping transport')
+
         return
       }
 
@@ -888,6 +895,7 @@ export class P2PCommunicationClient extends CommunicationClient {
         } catch (innerError: any) {
           if (innerError?.code === 'ERR_CANCELED') {
             logger.log('sendPairingResponse', 'inner request cancelled while stopping transport')
+
             return
           }
 

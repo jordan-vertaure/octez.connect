@@ -87,7 +87,7 @@ export async function gatherDiagnostics(
             expiry: typeof sessionData.expiry === 'number' ? sessionData.expiry : undefined,
             accounts:
               Array.isArray(sessionData.accounts) && sessionData.accounts.every((a) => typeof a === 'string')
-                ? (sessionData.accounts as string[])
+                ? (sessionData.accounts)
                 : undefined,
             networks: undefined, // Would need to extract from namespaces
             permissions: undefined // Would need to extract from namespaces
@@ -204,6 +204,7 @@ export async function copyErrorContextToClipboard(errorContext: ErrorContext): P
 
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(jsonString)
+
       return true
     }
 

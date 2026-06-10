@@ -26,9 +26,11 @@ export class IndexedDBStorage extends Storage {
   private isIndexedDBSupported() {
     if (typeof window !== 'undefined' && 'indexedDB' in window) {
       logger.log('isIndexedDBSupported', 'IndexedDB is supported in this browser.')
+
       return true
     } else {
       logger.error('isIndexedDBSupported', 'IndexedDB is not supported in this browser.')
+
       return false
     }
   }
@@ -38,6 +40,7 @@ export class IndexedDBStorage extends Storage {
       this.isSupported = this.isIndexedDBSupported()
       if (!this.isSupported) {
         reject('IndexedDB is not supported.')
+
         return
       }
 
@@ -103,11 +106,13 @@ export class IndexedDBStorage extends Storage {
     return new Promise((resolve, reject) => {
       if (!this.isSupported) {
         reject('IndexedDB is not supported.')
+
         return
       }
 
       if (!this.db?.objectStoreNames.contains(storeName)) {
         reject(`${storeName} not found. error: ${new Error().stack}`)
+
         return
       }
 
@@ -268,6 +273,7 @@ export class IndexedDBStorage extends Storage {
   ): Promise<void> {
     if (!this.isSupported) {
       logger.error('fillStore', 'IndexedDB not supported.')
+
       return
     }
 
@@ -294,6 +300,7 @@ export class IndexedDBStorage extends Storage {
 
           if (!targetDB.objectStoreNames.contains(targetStoreName)) {
             logger.error(`${targetStoreName} not found. ${new Error().stack}`)
+
             return
           }
 

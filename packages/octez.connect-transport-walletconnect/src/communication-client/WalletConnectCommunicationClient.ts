@@ -12,16 +12,6 @@ import Client from '@walletconnect/sign-client'
 import { ProposalTypes, SessionTypes, SignClientTypes } from '@walletconnect/types'
 import { getSdkError } from '@walletconnect/utils'
 import {
-  ActiveAccountUnspecified,
-  ActiveNetworkUnspecified,
-  InvalidNetworkOrAccount,
-  InvalidReceivedSessionNamespace,
-  InvalidSession,
-  MissingRequiredScope,
-  NotConnected,
-  mapWCErrorToBeaconError
-} from '../error'
-import {
   AcknowledgeResponseInput,
   BeaconBaseMessage,
   BeaconErrorType,
@@ -49,6 +39,16 @@ import {
   TransportType
 } from '@tezos-x/octez.connect-types'
 import { generateGUID, getAddressFromPublicKey, isPublicKeySC } from '@tezos-x/octez.connect-utils'
+import {
+  ActiveAccountUnspecified,
+  ActiveNetworkUnspecified,
+  InvalidNetworkOrAccount,
+  InvalidReceivedSessionNamespace,
+  InvalidSession,
+  MissingRequiredScope,
+  NotConnected,
+  mapWCErrorToBeaconError
+} from '../error'
 
 const TEZOS_PLACEHOLDER = 'tezos'
 const BEACON_SDK_VERSION = 'beacon_sdk_version'
@@ -132,8 +132,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
   private lastExtensionAttempt: number = 0
 
   constructor(
-    private wcOptions: { network: NetworkType; opts: SignClientTypes.Options },
-    private isLeader: Function
+    private readonly wcOptions: { network: NetworkType; opts: SignClientTypes.Options },
+    private readonly isLeader: Function
   ) {
     super()
     this.storage.onMessageHandler = this.onStorageMessageHandler.bind(this)
@@ -150,6 +150,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     if (!this.instance) {
       this.instance = new WalletConnectCommunicationClient(wcOptions, isLeader)
     }
+
     return WalletConnectCommunicationClient.instance
   }
 
@@ -266,6 +267,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
   async closeSignClient() {
     if (!this.signClient) {
       logger.error('No client active')
+
       return
     }
 
@@ -305,6 +307,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
     if (!client || !this.session) {
       logger.error('No session available.')
+
       return
     }
 
@@ -365,6 +368,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     if (!signClient) {
       return
     }
+
     return signClient.request<
       [
         {
@@ -374,8 +378,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         }
       ]
     >({
-      topic: topic,
-      chainId: chainId,
+      topic,
+      chainId,
       request: {
         method: PermissionScopeMethods.GET_ACCOUNTS,
         params: {}
@@ -460,6 +464,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         await this.openSession()
       } catch (error: any) {
         logger.error(error.message)
+
         return
       }
     }
@@ -613,6 +618,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
   private isMobileSesion(session: SessionTypes.Struct): boolean {
     const redirect = session.peer.metadata.redirect
+
     return (
       !!redirect &&
       !!redirect.native &&
@@ -792,6 +798,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         ) {
           const fun = this.eventHandlers.get(ClientEvents.CLOSE_ALERT)
           fun && fun(TransportType.WALLETCONNECT)
+
           return
         }
 
@@ -827,7 +834,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
     logger.warn('return uri and topic')
 
-    return { uri: uri ?? '', topic: topic }
+    return { uri: uri ?? '', topic }
   }
 
   public async close() {
@@ -869,6 +876,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
 
       if (!session) {
         logger.warn('session_update', 'topic does not exist')
+
         return
       }
 
@@ -1042,8 +1050,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
   }
 
   private async createPairingRequestInfo(): Promise<ExtendedWalletConnectPairingRequest> {
-    let _uri = '',
-      _topic = ''
+    let _uri = '';
+      let _topic = ''
     try {
       logger.warn('getPairingRequestInfo')
       const { uri, topic } = (await this.init(true)) ?? { uri: '', topic: '' }
@@ -1122,6 +1130,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       ))
 
     this.clearState()
+
     return sessions.length > 0
   }
 
@@ -1222,7 +1231,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     } else {
       logger.debug('Nope, aborting', [pairingTopic])
 
-      throw new InvalidSession('No session set.' + pairingTopic)
+      throw new InvalidSession(`No session set.${  pairingTopic}`)
     }
   }
 
@@ -1270,7 +1279,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     if (receivedNamespaces[TEZOS_PLACEHOLDER]) {
       this.validateMethods(scope.methods, receivedNamespaces[TEZOS_PLACEHOLDER].methods)
       if (scope.events) {
-        this.validateEvents(scope.events, receivedNamespaces['tezos'].events)
+        this.validateEvents(scope.events, receivedNamespaces.tezos.events)
       }
       this.validateAccounts(scope.networks, receivedNamespaces[TEZOS_PLACEHOLDER].accounts)
     } else {
@@ -1388,6 +1397,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       this.validateNetworkAndAccount(this.getActiveNetwork(), account)
     } catch (error: any) {
       logger.error(error.message)
+
       return
     }
 
@@ -1433,6 +1443,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       this.getSession()
       throw new ActiveNetworkUnspecified()
     }
+
     return this.activeNetwork
   }
 
@@ -1600,7 +1611,8 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     if (!this.session) {
       throw new NotConnected()
     }
-    return this.session!
+
+    return this.session
   }
 
   /**
@@ -1612,6 +1624,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       this.getSession()
       throw new ActiveAccountUnspecified()
     }
+
     return this.activeAccountOrPbk
   }
 
@@ -1649,6 +1662,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         logger.debug('Skipping session extension - recently attempted', {
           minutesSinceLastAttempt: (timeSinceLastExtension / 60).toFixed(1)
         })
+
         return
       }
 
@@ -1706,6 +1720,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         expiry: session.expiry,
         now
       })
+
       return false
     }
 
@@ -1714,6 +1729,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       const signClient = await this.getSignClient()
       if (!signClient) {
         logger.warn('Session validation failed: no sign client available')
+
         return false
       }
 
@@ -1723,9 +1739,11 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
         'WalletConnect session validation ping timed out.'
       )
       logger.debug('Session validation passed: session is valid')
+
       return true
     } catch (err: any) {
       logger.warn('Session validation failed: ping failed', err.message)
+
       return false
     }
   }

@@ -34,6 +34,7 @@ export async function fetchWalletListsFromGitHub(
 
     if (!response.ok) {
       console.warn(`Failed to fetch wallet list from GitHub: ${response.status}`)
+
       return null
     }
 
@@ -50,6 +51,7 @@ export async function fetchWalletListsFromGitHub(
     } else {
       console.warn('Failed to fetch wallet list from GitHub, using bundled version:', error)
     }
+
     return null
   }
 }

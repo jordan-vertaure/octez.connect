@@ -109,15 +109,6 @@ import {
   isValidAddress,
   getKeypairFromSeed
 } from '@tezos-x/octez.connect-utils'
-import { messageEvents } from '../beacon-message-events'
-import { BlockExplorer } from '../utils/block-explorer'
-import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
-import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
-
-import { DAppClientOptions } from './DAppClientOptions'
-import { DappPostMessageTransport } from '../transports/DappPostMessageTransport'
-import { DappP2PTransport } from '../transports/DappP2PTransport'
-import { DappWalletConnectTransport } from '../transports/DappWalletConnectTransport'
 import { PostMessageTransport } from '@tezos-x/octez.connect-transport-postmessage'
 import {
   AlertButton,
@@ -139,6 +130,15 @@ import {
   currentOS
 } from '@tezos-x/octez.connect-ui'
 import { WalletConnectTransport } from '@tezos-x/octez.connect-transport-walletconnect'
+import { messageEvents } from '../beacon-message-events'
+import { BlockExplorer } from '../utils/block-explorer'
+import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
+import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
+
+import { DappPostMessageTransport } from '../transports/DappPostMessageTransport'
+import { DappP2PTransport } from '../transports/DappP2PTransport'
+import { DappWalletConnectTransport } from '../transports/DappWalletConnectTransport'
+import { DAppClientOptions } from './DAppClientOptions'
 
 const logger = new Logger('DAppClient')
 
@@ -164,7 +164,7 @@ export class DAppClient extends Client {
   /**
    * Automatically switch between apps on Mobile Devices (Enabled by Default)
    */
-  private enableAppSwitching: boolean
+  private readonly enableAppSwitching: boolean
 
   /**
    * Enable metrics tracking (Disabled by Default)
@@ -258,7 +258,7 @@ export class DAppClient extends Client {
 
   private debounceSetActiveAccount: boolean = false
 
-  private multiTabChannel = new MultiTabChannel(
+  private readonly multiTabChannel = new MultiTabChannel(
     'octez.connect-sdk-channel',
     this.onBCMessageHandler.bind(this),
     this.onElectedLeaderhandler.bind(this)
@@ -297,7 +297,7 @@ export class DAppClient extends Client {
     this.storageValidator = new StorageValidator(this.storage)
 
     this.enableAppSwitching =
-      config.enableAppSwitching === undefined ? true : !!config.enableAppSwitching
+      config.enableAppSwitching === undefined ? true : Boolean(config.enableAppSwitching)
 
     this.enableMetrics = config.enableMetrics ? true : false
 
@@ -305,6 +305,7 @@ export class DAppClient extends Client {
     this.storage.subscribeToStorageChanged(async (event) => {
       if (event.eventType === 'storageCleared') {
         this.setActiveAccount(undefined)
+
         return
       }
       if (event.eventType === 'entryModified') {
@@ -316,20 +317,24 @@ export class DAppClient extends Client {
             const account = await this.getAccount(accountIdentifier)
             this.setActiveAccount(account)
           }
+
           return
         }
         if (event.key === this.storage.getPrefixedKey(StorageKey.ACCOUNTS)) {
           await this.recoverActiveAccountFromAccountsChange()
+
           return
         }
         if (event.key === this.storage.getPrefixedKey(StorageKey.ENABLE_METRICS)) {
-          this.enableMetrics = !!(await this.storage.get(StorageKey.ENABLE_METRICS))
+          this.enableMetrics = Boolean(await this.storage.get(StorageKey.ENABLE_METRICS))
+
           return
         }
         if (event.key === this.storage.getPrefixedKey(StorageKey.BEACON_SDK_SECRET_SEED)) {
           this._keyPair = new ExposedPromise()
           this._beaconId = new ExposedPromise()
           await this.initSDK()
+
           return
         }
       }
@@ -341,9 +346,11 @@ export class DAppClient extends Client {
         if (activeAccountIdentifier) {
           const account = await this.accountManager.getAccount(activeAccountIdentifier)
           await this.setActiveAccount(account)
+
           return account
         } else {
           await this.setActiveAccount(undefined)
+
           return undefined
         }
       })
@@ -351,6 +358,7 @@ export class DAppClient extends Client {
         logger.error(storageError)
         await this.resetInvalidState(false)
         this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED)
+
         return undefined
       })
 
@@ -360,13 +368,14 @@ export class DAppClient extends Client {
     ): Promise<void> => {
       const isV3WrappedMessage =
         usesWrappedMessages(message.version) &&
-        !!(message as BeaconMessageWrapper<BeaconBaseMessage>).message
+        Boolean((message as BeaconMessageWrapper<BeaconBaseMessage>).message)
 
       // Issue #33: a V3-versioned message can arrive without its wrapped payload.
       // Drop it safely instead of dereferencing an undefined payload, which would
       // throw an unhandled rejection inside the transport subscription callback.
       if (usesWrappedMessages(message.version) && !isV3WrappedMessage) {
         logger.warn('handleResponse', 'Received wrapped message with undefined payload', message)
+
         return
       }
 
@@ -375,7 +384,7 @@ export class DAppClient extends Client {
         : (message as BeaconMessage)
 
       let appMetadata: AppMetadata | undefined = isV3WrappedMessage
-        ? (typedMessage as unknown as PermissionResponseV3<string>).blockchainData?.appMetadata
+        ? (typedMessage as unknown as PermissionResponseV3).blockchainData?.appMetadata
         : (typedMessage as PermissionResponse).appMetadata
 
       if (!appMetadata && isV3WrappedMessage) {
@@ -557,7 +566,7 @@ export class DAppClient extends Client {
       .catch((err) => logger.error(err.message))
 
     this.sendMetrics(
-      'enable-metrics?' + this.addQueryParam('version', SDK_VERSION),
+      `enable-metrics?${  this.addQueryParam('version', SDK_VERSION)}`,
       undefined,
       (res) => {
         if (!res.ok) {
@@ -675,6 +684,7 @@ export class DAppClient extends Client {
 
     if (id) {
       this.userId = id
+
       return
     }
 
@@ -996,6 +1006,7 @@ export class DAppClient extends Client {
               }, 1000)
               abortHandler()
               resolve('')
+
               return
             }
             resolve(await serializer.serialize(await p2pTransport.getPairingRequestInfo()))
@@ -1070,6 +1081,7 @@ export class DAppClient extends Client {
 
   private async isInvalidState(account: AccountInfo) {
     const activeAccount = await this._activeAccount.promise
+
     return !activeAccount
       ? false
       : activeAccount?.address !== account?.address && !this.isGetActiveAccountHandled
@@ -1109,6 +1121,7 @@ export class DAppClient extends Client {
 
       if (tranport instanceof WalletConnectTransport && tranport.wasDisconnectedByWallet()) {
         await this.resetInvalidState()
+
         return
       }
     }
@@ -1163,6 +1176,7 @@ export class DAppClient extends Client {
 
       if (transport instanceof WalletConnectTransport && transport.wasDisconnectedByWallet()) {
         await this.resetInvalidState()
+
         return
       }
     }
@@ -1264,7 +1278,7 @@ export class DAppClient extends Client {
   }
 
   private addQueryParam(paramName: string, paramValue: string): string {
-    return paramName + '=' + paramValue
+    return `${paramName  }=${  paramValue}`
   }
 
   private async buildPayload(
@@ -1510,15 +1524,15 @@ export class DAppClient extends Client {
   }
 
   public async permissionRequest(
-    input: PermissionRequestV3<string>
-  ): Promise<PermissionResponseV3<string>> {
+    input: PermissionRequestV3
+  ): Promise<PermissionResponseV3> {
     logger.log('permissionRequest', input)
     const blockchain = this.blockchains.get(input.blockchainIdentifier)
     if (!blockchain) {
       throw new Error(`Blockchain "${input.blockchainIdentifier}" not supported by dAppClient`)
     }
 
-    const request: PermissionRequestV3<string> = {
+    const request: PermissionRequestV3 = {
       ...input,
       type: BeaconMessageType.PermissionRequest,
       blockchainData: {
@@ -1536,8 +1550,8 @@ export class DAppClient extends Client {
 
     const { message: response, connectionInfo } = await this.requireResponse(
       this.makeRequestV3<
-        PermissionRequestV3<string>,
-        BeaconMessageWrapper<PermissionResponseV3<string>>
+        PermissionRequestV3,
+        BeaconMessageWrapper<PermissionResponseV3>
       >(request),
       request as any,
       logId
@@ -1594,7 +1608,7 @@ export class DAppClient extends Client {
     return response.message
   }
 
-  public async request(input: BlockchainRequestV3<string>): Promise<BlockchainResponseV3<string>> {
+  public async request(input: BlockchainRequestV3): Promise<BlockchainResponseV3> {
     logger.log('request', input)
     const blockchain = this.blockchains.get(input.blockchainIdentifier)
     if (!blockchain) {
@@ -1608,7 +1622,7 @@ export class DAppClient extends Client {
       throw await this.sendInternalError('No active account!')
     }
 
-    const request: BlockchainRequestV3<string> = {
+    const request: BlockchainRequestV3 = {
       ...input,
       type: BeaconMessageType.BlockchainRequest,
       accountId: activeAccount.accountIdentifier
@@ -1620,8 +1634,8 @@ export class DAppClient extends Client {
     logger.time(true, logId)
     const res = (await this.checkMakeRequest())
       ? this.makeRequestV3<
-          BlockchainRequestV3<string>,
-          BeaconMessageWrapper<BlockchainResponseV3<string>>
+          BlockchainRequestV3,
+          BeaconMessageWrapper<BlockchainResponseV3>
         >(request)
       : this.makeRequestBC<any, any>(request)
 
@@ -1778,14 +1792,14 @@ export class DAppClient extends Client {
     const activeAccount = await this.getActiveAccount()
 
     if (!activeAccount)
-      throw new Error('Please request permissions before doing a proof of event challenge')
+      {throw new Error('Please request permissions before doing a proof of event challenge')}
     if (
       activeAccount.walletType !== 'abstracted_account' &&
       activeAccount.verificationType !== 'proof_of_event'
     )
-      throw new Error(
+      {throw new Error(
         'This wallet is not an abstracted account and thus cannot perform proof of event'
-      )
+      )}
 
     const request: ProofOfEventChallengeRequestInput = {
       type: BeaconMessageType.ProofOfEventChallengeRequest,
@@ -1836,7 +1850,7 @@ export class DAppClient extends Client {
     const activeAccount = await this.getActiveAccount()
 
     if (!activeAccount)
-      throw new Error('Please request permissions before doing a proof of event challenge')
+      {throw new Error('Please request permissions before doing a proof of event challenge')}
     if (
       activeAccount.walletType !== 'abstracted_account' &&
       activeAccount.verificationType !== 'proof_of_event'
@@ -2246,7 +2260,7 @@ export class DAppClient extends Client {
         logger.time(false, logId)
         throw error
       }
-      const errorResponse = error as ErrorResponse
+      const errorResponse = error
       errorResponse.errorType === BeaconErrorType.ABORTED_ERROR
         ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
         : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
@@ -2469,10 +2483,11 @@ export class DAppClient extends Client {
       app: AppBase | undefined
       type: 'extension' | 'mobile' | 'web' | 'desktop' | undefined
     } => {
-      if (isBrowser(window) && browser) return { app: browser, type: 'web' }
-      if (isDesktop(window) && desktop) return { app: desktop, type: 'desktop' }
-      if (isBrowser(window) && extension) return { app: extension, type: 'extension' }
-      if (mobile) return { app: mobile, type: 'mobile' }
+      if (isBrowser(window) && browser) {return { app: browser, type: 'web' }}
+      if (isDesktop(window) && desktop) {return { app: desktop, type: 'desktop' }}
+      if (isBrowser(window) && extension) {return { app: extension, type: 'extension' }}
+      if (mobile) {return { app: mobile, type: 'mobile' }}
+
       return { app: undefined, type: undefined }
     }
 
@@ -2685,8 +2700,8 @@ export class DAppClient extends Client {
    * @param account The account that the message will be sent to
    */
   private async makeRequestV3<
-    T extends BlockchainMessage<string>,
-    U extends BeaconMessageWrapper<BlockchainMessage<string>>
+    T extends BlockchainMessage,
+    U extends BeaconMessageWrapper<BlockchainMessage>
   >(
     requestInput: T,
     otherTabMessageId?: string
@@ -2964,7 +2979,7 @@ export class DAppClient extends Client {
     ].join(' ')
 
     const bytes = toHex(constructedString)
-    const payloadBytes = '05' + '01' + bytes.length.toString(16).padStart(8, '0') + bytes
+    const payloadBytes = `05` + `01${  bytes.length.toString(16).padStart(8, '0')  }${bytes}`
 
     const signature = await signMessage(payloadBytes, {
       secretKey: Buffer.from(keypair.secretKey)

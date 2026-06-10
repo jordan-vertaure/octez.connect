@@ -39,10 +39,10 @@ import {
   WalletConnectPairingRequest,
   ExtendedWalletConnectPairingRequest
 } from '@tezos-x/octez.connect-types'
-import { WalletClientOptions } from './WalletClientOptions'
 import { WalletP2PTransport } from '../transports/WalletP2PTransport'
 import { IncomingRequestInterceptor } from '../interceptors/IncomingRequestInterceptor'
 import { OutgoingResponseInterceptor } from '../interceptors/OutgoingResponseInterceptor'
+import { WalletClientOptions } from './WalletClientOptions'
 
 const logger = new Logger('WalletClient')
 
@@ -209,7 +209,7 @@ export class WalletClient extends Client {
     ].join(' ')
 
     const bytes = toHex(constructedString)
-    const payloadBytes = '05' + '01' + bytes.length.toString(16).padStart(8, '0') + bytes
+    const payloadBytes = `05` + `01${  bytes.length.toString(16).padStart(8, '0')  }${bytes}`
 
     return {
       challenge,
@@ -288,6 +288,7 @@ export class WalletClient extends Client {
       logger.warn('_connect', err.message)
       await transport.disconnect()
       await this._connect(--attempts)
+
       return
     }
 

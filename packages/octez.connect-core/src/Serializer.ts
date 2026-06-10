@@ -47,6 +47,7 @@ export class Serializer {
       // v1: Base58check decoding
       const decodedBytes = bs58check.decode(encoded)
       const jsonString = Buffer.from(decodedBytes).toString('utf8')
+
       return JSON.parse(jsonString)
     }
   }

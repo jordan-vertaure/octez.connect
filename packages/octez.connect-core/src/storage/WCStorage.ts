@@ -4,7 +4,7 @@ import { IndexedDBStorage } from './IndexedDBStorage'
 
 export class WCStorage {
   private readonly indexedDB = new IndexedDBStorage()
-  private channel: BroadcastChannel = new BroadcastChannel('WALLET_CONNECT_V2_INDEXED_DB')
+  private readonly channel: BroadcastChannel = new BroadcastChannel('WALLET_CONNECT_V2_INDEXED_DB')
   onMessageHandler: ((type: string) => void) | undefined
   onErrorHandler: ((data: any) => void) | undefined
 
@@ -92,9 +92,7 @@ function isWalletConnectLocalStorageKey(key: string, name?: string): boolean {
 }
 
 function hasNonEmptyWalletConnectLocalStorageEntries(name: string): boolean {
-  return getWalletConnectLocalStorageKeys(name).some((key) => {
-    return hasNonEmptyWalletConnectStorageValue(localStorage.getItem(key) ?? undefined)
-  })
+  return getWalletConnectLocalStorageKeys(name).some((key) => hasNonEmptyWalletConnectStorageValue(localStorage.getItem(key) ?? undefined))
 }
 
 function hasNonEmptyWalletConnectStorageValue(value: string | undefined): boolean {

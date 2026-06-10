@@ -9,9 +9,9 @@ import {
   Network,
   PermissionScope
 } from '@tezos-x/octez.connect-types'
-import { SubstratePermissionResponse } from './types/messages/permission-response'
 import bundledSubstrateRegistry from '@tezos-x/octez.connect-ui/data/substrate.json'
 import { loadWalletLists } from '@tezos-x/octez.connect-utils'
+import { SubstratePermissionResponse } from './types/messages/permission-response'
 
 const { desktopList, extensionList, iOSList, webList } = loadWalletLists(bundledSubstrateRegistry)
 
@@ -38,10 +38,10 @@ export class SubstrateBlockchain implements Blockchain {
     iOSList: App[]
   }> {
     return {
-      extensionList: extensionList,
-      desktopList: desktopList,
-      webList: webList,
-      iOSList: iOSList
+      extensionList,
+      desktopList,
+      webList,
+      iOSList
     }
   }
 
