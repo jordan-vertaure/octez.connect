@@ -131,11 +131,15 @@ test('should disconnect on both tabs', async () => {
   await expect(dapp.locator('#activeAccount')).toHaveText('', { timeout: 30_000 })
   await expect(dapp2.locator('#activeAccount')).toHaveText('', { timeout: 30_000 })
 
-  const activeAccount = await dapp.evaluate(() => {
-    return window.localStorage.getItem('beacon:active-account')
-  })
-
-  expect(activeAccount).toBeNull()
+  // Cross-tab clear is eventually-consistent: a freshly-opened bystander tab can
+  // briefly re-persist the active account from its own load after this tab's
+  // delete. Poll the persisted value rather than reading once, so a transient
+  // re-persist resolves without masking a genuinely stuck value (poll times out).
+  await expect
+    .poll(() => dapp.evaluate(() => window.localStorage.getItem('beacon:active-account')), {
+      timeout: 30_000
+    })
+    .toBeNull()
 })
 
 test('should clearActiveAccount on both tabs', async () => {
@@ -147,11 +151,11 @@ test('should clearActiveAccount on both tabs', async () => {
   await expect(dapp.locator('#activeAccount')).toHaveText('', { timeout: 30_000 })
   await expect(dapp2.locator('#activeAccount')).toHaveText('', { timeout: 30_000 })
 
-  const activeAccount = await dapp.evaluate(() => {
-    return window.localStorage.getItem('beacon:active-account')
-  })
-
-  expect(activeAccount).toBeNull()
+  await expect
+    .poll(() => dapp.evaluate(() => window.localStorage.getItem('beacon:active-account')), {
+      timeout: 30_000
+    })
+    .toBeNull()
 })
 
 // QUARANTINED (test.fixme): this multi-tab disconnect→re-pair→cross-tab-recover
