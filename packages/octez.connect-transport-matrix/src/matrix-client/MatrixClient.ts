@@ -33,6 +33,7 @@ const RETRY_INTERVAL = 5000
 export class MatrixClient {
   private isActive: boolean = true
   private _isReady: ExposedPromise<void> = new ExposedPromise()
+  private txnIdLock: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly store: MatrixClientStore,
@@ -323,9 +324,9 @@ export class MatrixClient {
     const store = this.store
     const sync = this.sync.bind(this)
 
+    // Manual stop is normal shutdown: the polling promise only resolves.
     const pollSync = async (
-      resolve: (value?: void | PromiseLike<void> | undefined) => void,
-      reject: (reason?: any) => void
+      resolve: (value?: void | PromiseLike<void> | undefined) => void
     ): Promise<void> => {
       let syncingRetries: number = 0
       try {
@@ -343,12 +344,12 @@ export class MatrixClient {
         if (this.isActive) {
           setTimeout(
             async () => {
-              await pollSync(resolve, reject)
+              await pollSync(resolve)
             },
             syncingRetries > IMMEDIATE_POLLING_RETRIES ? RETRY_INTERVAL + interval : interval
           )
         } else {
-          reject(new Error(`Syncing stopped manually.`))
+          resolve()
         }
       }
     }
@@ -391,13 +392,25 @@ export class MatrixClient {
    * Create a transaction ID
    */
   private async createTxnId(): Promise<string> {
-    const timestamp = new Date().getTime()
-    const counter = this.store.get('txnNo')
-
-    await this.store.update({
-      txnNo: counter + 1
+    const previousTxnIdLock = this.txnIdLock
+    let unlockTxnId!: () => void
+    this.txnIdLock = new Promise<void>((resolve) => {
+      unlockTxnId = resolve
     })
 
-    return `m${timestamp}.${counter}`
+    await previousTxnIdLock
+
+    try {
+      const timestamp = new Date().getTime()
+      const counter = this.store.get('txnNo')
+
+      await this.store.update({
+        txnNo: counter + 1
+      })
+
+      return `m${timestamp}.${counter}`
+    } finally {
+      unlockTxnId()
+    }
   }
 }

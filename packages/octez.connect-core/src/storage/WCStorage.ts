@@ -2,10 +2,55 @@ import { StorageKey } from '@tezos-x/octez.connect-types'
 import { LocalStorage } from './LocalStorage'
 import { IndexedDBStorage } from './IndexedDBStorage'
 
+const parseStorageArray = (value: string): unknown => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return undefined
+  }
+}
+
+const hasNonEmptyWalletConnectStorageValue = (value: string | undefined): boolean => {
+  if (!value) {
+    return false
+  }
+
+  const parsedValue = parseStorageArray(value)
+
+  return Array.isArray(parsedValue) && parsedValue.length > 0
+}
+
+const isWalletConnectLocalStorageKey = (key: string, name?: string): boolean => {
+  if (!key.includes('wc@2:')) {
+    return false
+  }
+
+  return name ? key.endsWith(name) : true
+}
+
+// WalletConnect owns its prefix; Airgap's StorageKey enum does not match WC's emitted key shape.
+const getWalletConnectLocalStorageKeys = (name?: string): string[] => {
+  const keys: string[] = []
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+
+    if (key && isWalletConnectLocalStorageKey(key, name)) {
+      keys.push(key)
+    }
+  }
+
+  return keys
+}
+
+const hasNonEmptyWalletConnectLocalStorageEntries = (name: string): boolean =>
+  getWalletConnectLocalStorageKeys(name).some((key) =>
+    hasNonEmptyWalletConnectStorageValue(localStorage.getItem(key) ?? undefined)
+  )
+
 export class WCStorage {
-  private readonly localStorage = new LocalStorage()
   private readonly indexedDB = new IndexedDBStorage()
-  private channel: BroadcastChannel = new BroadcastChannel('WALLET_CONNECT_V2_INDEXED_DB')
+  private readonly channel: BroadcastChannel = new BroadcastChannel('WALLET_CONNECT_V2_INDEXED_DB')
   onMessageHandler: ((type: string) => void) | undefined
   onErrorHandler: ((data: any) => void) | undefined
 
@@ -27,28 +72,28 @@ export class WCStorage {
   }
 
   async hasPairings() {
-    const pairings = (await this.indexedDB.get(StorageKey.WC_2_CORE_PAIRING)) ?? '[]'
+    const pairings = await this.indexedDB.get(StorageKey.WC_2_CORE_PAIRING)
 
-    if (pairings.length) {
+    if (hasNonEmptyWalletConnectStorageValue(pairings)) {
       return true
     }
 
     if (await LocalStorage.isSupported()) {
-      return ((await this.localStorage.get(StorageKey.WC_2_CORE_PAIRING)) ?? '[]') !== '[]'
+      return hasNonEmptyWalletConnectLocalStorageEntries('pairing')
     }
 
     return false
   }
 
   async hasSessions() {
-    const sessions = (await this.indexedDB.get(StorageKey.WC_2_CLIENT_SESSION)) ?? '[]'
+    const sessions = await this.indexedDB.get(StorageKey.WC_2_CLIENT_SESSION)
 
-    if (sessions.length) {
+    if (hasNonEmptyWalletConnectStorageValue(sessions)) {
       return true
     }
 
     if (await LocalStorage.isSupported()) {
-      return ((await this.localStorage.get(StorageKey.WC_2_CLIENT_SESSION)) ?? '[]') !== '[]'
+      return hasNonEmptyWalletConnectLocalStorageEntries('session')
     }
 
     return false
@@ -64,16 +109,7 @@ export class WCStorage {
     await this.indexedDB.clearStore()
 
     if (await LocalStorage.isSupported()) {
-      await Promise.all([
-        this.localStorage.delete(StorageKey.WC_2_CLIENT_SESSION),
-        this.localStorage.delete(StorageKey.WC_2_CORE_PAIRING),
-        this.localStorage.delete(StorageKey.WC_2_CORE_KEYCHAIN),
-        this.localStorage.delete(StorageKey.WC_2_CORE_MESSAGES),
-        this.localStorage.delete(StorageKey.WC_2_CLIENT_PROPOSAL),
-        this.localStorage.delete(StorageKey.WC_2_CORE_SUBSCRIPTION),
-        this.localStorage.delete(StorageKey.WC_2_CORE_HISTORY),
-        this.localStorage.delete(StorageKey.WC_2_CORE_EXPIRER)
-      ])
+      getWalletConnectLocalStorageKeys().forEach((key) => localStorage.removeItem(key))
     }
   }
 }

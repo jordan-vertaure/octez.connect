@@ -24,7 +24,7 @@ test('should load activeAccount on page reload', async () => {
   const activeAccount = await dapp.evaluate(() => {
     return window.localStorage.getItem('beacon:active-account')
   })
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 })
 
 test('should send a request to sign', async () => {
@@ -127,7 +127,7 @@ test('should disconnect on both tabs', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 })
 
 test('should clearActiveAccount on both tabs', async () => {
@@ -143,7 +143,7 @@ test('should clearActiveAccount on both tabs', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 })
 
 test('should update the session on both tabs', async () => {
@@ -163,7 +163,7 @@ test('should update the session on both tabs', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 })
 
 test('should close the session through wallet', async () => {
@@ -183,7 +183,7 @@ test('should close the session through wallet', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 })
 
 // due to an issue in WalletConnect, we cannot test the flow connect -> disconnect -> reconnect

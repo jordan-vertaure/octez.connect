@@ -89,7 +89,6 @@ import {
   SDK_VERSION,
   IndexedDBStorage,
   MultiTabChannel,
-  BACKEND_URL,
   getError
 } from '@tezos-x/octez.connect-core'
 import {
@@ -104,7 +103,13 @@ import {
   getKeypairFromSeed
 } from '@tezos-x/octez.connect-utils'
 import { messageEvents } from '../beacon-message-events'
-import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
+import {
+  BeaconEvent,
+  BeaconEventHandlerFunction,
+  BeaconEventType,
+  BeaconEventHandler,
+  InvalidAccountDeactivatedReason
+} from '../events'
 import { BlockExplorer } from '../utils/block-explorer'
 import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
 
@@ -135,6 +140,69 @@ import {
 import { WalletConnectTransport } from '@tezos-x/octez.connect-transport-walletconnect'
 
 const logger = new Logger('DAppClient')
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
+const SESSION_UPDATE_REQUEST_ID = 'session_update'
+
+const createLazyPromise = <T>(factory: () => Promise<T>): PromiseLike<T> => {
+  let promise: Promise<T> | undefined
+
+  const getPromise = (): Promise<T> => {
+    if (!promise) {
+      promise = factory()
+    }
+
+    return promise
+  }
+
+  const lazyPromise: PromiseLike<T> & Pick<Promise<T>, 'catch' | 'finally'> = {
+    then: <TResult1 = T, TResult2 = never>(
+      onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    ): Promise<TResult1 | TResult2> => getPromise().then(onfulfilled, onrejected),
+    catch: <TResult = never>(
+      onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
+    ): Promise<T | TResult> => getPromise().catch(onrejected),
+    finally: (onfinally?: (() => void) | null): Promise<T> =>
+      getPromise().finally(onfinally ?? undefined)
+  }
+
+  return lazyPromise
+}
+
+export interface DAppClientDisconnectOptions {
+  /**
+   * Send Beacon disconnect messages to stored wallet peers before tearing down the transport.
+   *
+   * Defaults to true because DAppClient.disconnect is the user-facing wallet logout path.
+   */
+  notifyPeers?: boolean
+}
+
+export interface DAppClientRemoveAllPeersOptions {
+  /**
+   * Continue removing local peer/account state even if notifying one peer fails.
+   */
+  ignoreDisconnectErrors?: boolean
+}
+
+type DAppInternalTransport =
+  | DappPostMessageTransport
+  | DappP2PTransport
+  | DappWalletConnectTransport
+
+interface TransportWithClientCleanup {
+  doClientCleanup: () => Promise<void>
+}
+
+interface PeersForTransport {
+  transport: DAppInternalTransport
+  peers: ExtendedPeerInfo[]
+}
+
+interface PeerNotification {
+  transport: DAppInternalTransport
+  peer: ExtendedPeerInfo
+}
 
 /**
  * @publicapi
@@ -195,6 +263,10 @@ export class DAppClient extends Client {
     >
   >()
 
+  private readonly acknowledgedRequests = new Set<string>()
+  private readonly openRequestTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly requestTimeoutMs: number
+
   /**
    * The currently active account. For all requests that are associated to a specific request (operation request, signing request),
    * the active account is used to determine the network and destination wallet
@@ -208,9 +280,29 @@ export class DAppClient extends Client {
 
   private _initPromise: Promise<TransportType> | undefined
 
-  private isInitPending: boolean = false
+  /**
+   * Rejector for the in-flight {@link _initPromise}. Populated while init is
+   * awaiting a peer pairing; cleared automatically when {@link _initPromise}
+   * settles. Abort paths (modal close, WC session-proposal rejection,
+   * transport-level connection failure) call this to unwedge any
+   * `await this.init()` caller, surfacing the error to handleRequestError
+   * instead of hanging.
+   */
+  private _initReject: ((reason: ErrorResponse) => void) | undefined
+
+  private _initSubstratePairing: boolean | undefined
+
+  private _requestPermissionsPromise: Promise<PermissionResponseOutput> | undefined
+
+  private _requestPermissionsKey: string | undefined
+
+  private _sdkSecretSeedPromise: Promise<string> | undefined
+
+  private destroyed = false
 
   private readonly activeAccountLoaded: Promise<AccountInfo | undefined>
+
+  private readonly storageValidated: Promise<void>
 
   private readonly appMetadataManager: AppMetadataManager
 
@@ -225,6 +317,13 @@ export class DAppClient extends Client {
   private readonly beaconIDB = new IndexedDBStorage('beacon', ['bug_report', 'metrics'])
 
   private debounceSetActiveAccount: boolean = false
+
+  // Constructor-time invalid storage recovery can race through multiple async paths.
+  // Keep this guard scoped to those startup paths.
+  private hasEmittedInvalidAccountDeactivated: boolean = false
+
+  private _disconnectPromise?: Promise<void>
+  private _disconnectNotifyPeers: boolean = false
 
   private multiTabChannel = new MultiTabChannel(
     'octez.connect-sdk-channel',
@@ -259,22 +358,32 @@ export class DAppClient extends Client {
       config.enableAppSwitching === undefined ? true : !!config.enableAppSwitching
 
     this.enableMetrics = config.enableMetrics ? true : false
+    this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
 
     // Subscribe to storage changes and update the active account if it changes on other tabs
     this.storage.subscribeToStorageChanged(async (event) => {
+      if (event.oldValue === event.newValue) {
+        return
+      }
+
       if (event.eventType === 'storageCleared') {
-        this.setActiveAccount(undefined)
+        await this.setActiveAccount(undefined)
         return
       }
       if (event.eventType === 'entryModified') {
         if (event.key === this.storage.getPrefixedKey(StorageKey.ACTIVE_ACCOUNT)) {
           const accountIdentifier = event.newValue
           if (!accountIdentifier || accountIdentifier === 'undefined') {
-            this.setActiveAccount(undefined)
+            await this.setActiveAccount(undefined)
           } else {
             const account = await this.getAccount(accountIdentifier)
-            this.setActiveAccount(account)
+            await this.setActiveAccount(account)
           }
+          return
+        }
+        if (event.key === this.storage.getPrefixedKey(StorageKey.ACCOUNTS)) {
+          await this.recoverActiveAccountFromAccountsChange()
+
           return
         }
         if (event.key === this.storage.getPrefixedKey(StorageKey.ENABLE_METRICS)) {
@@ -293,19 +402,43 @@ export class DAppClient extends Client {
     this.activeAccountLoaded = this.storage
       .get(StorageKey.ACTIVE_ACCOUNT)
       .then(async (activeAccountIdentifier) => {
-        if (activeAccountIdentifier) {
-          const account = await this.accountManager.getAccount(activeAccountIdentifier)
-          await this.setActiveAccount(account)
-          return account
-        } else {
-          await this.setActiveAccount(undefined)
+        const accounts = await this.accountManager.getAccounts()
+
+        if (activeAccountIdentifier === 'undefined') {
+          // Non-normalizing storage backends can still surface legacy sentinel strings directly.
+          await this.deactivateInvalidAccountState('missing_active_account')
+
           return undefined
         }
+
+        if (activeAccountIdentifier) {
+          const account = accounts.find(
+            (storedAccount) => storedAccount.accountIdentifier === activeAccountIdentifier
+          )
+
+          if (!account) {
+            await this.deactivateInvalidAccountState('missing_active_account')
+
+            return undefined
+          }
+
+          await this.setActiveAccount(account)
+          return account
+        }
+
+        if (accounts.length > 0 && this.hasStoredActiveAccountPointer()) {
+          await this.deactivateInvalidAccountState('missing_active_account')
+
+          return undefined
+        }
+
+        await this.setActiveAccount(undefined)
+
+        return undefined
       })
       .catch(async (storageError) => {
         logger.error(storageError)
-        await this.resetInvalidState(false)
-        this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED)
+        await this.deactivateInvalidAccountState('invalid_active_account_storage')
         return undefined
       })
 
@@ -313,17 +446,18 @@ export class DAppClient extends Client {
       message: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>,
       connectionInfo: ConnectionContext
     ): Promise<void> => {
-      const typedMessage =
-        message.version === '3'
-          ? (message as BeaconMessageWrapper<BeaconBaseMessage>).message
-          : (message as BeaconMessage)
+      const isV3WrappedMessage = message.version === '3' && 'message' in message
+
+      const typedMessage = isV3WrappedMessage
+        ? message.message
+        : (message as BeaconMessage)
 
       let appMetadata: AppMetadata | undefined =
-        message.version === '3'
+        isV3WrappedMessage
           ? (typedMessage as unknown as PermissionResponseV3<string>).blockchainData?.appMetadata
           : (typedMessage as PermissionResponse).appMetadata
 
-      if (!appMetadata && message.version === '3') {
+      if (!appMetadata && isV3WrappedMessage) {
         const storedMetadata = await Promise.all([
           this.storage.get(StorageKey.TRANSPORT_P2P_PEERS_DAPP),
           this.storage.get(StorageKey.TRANSPORT_WALLETCONNECT_PEERS_DAPP),
@@ -358,8 +492,10 @@ export class DAppClient extends Client {
           id: message.id
         })
 
-        if (typedMessage.type !== BeaconMessageType.Acknowledge) {
-          this.openRequestsOtherTabs.delete(message.id)
+        if (typedMessage.type === BeaconMessageType.Acknowledge) {
+          this.clearOpenRequestTimeout(message.id)
+        } else {
+          this.clearOpenRequest(message.id)
         }
 
         return
@@ -398,16 +534,20 @@ export class DAppClient extends Client {
       }
 
       if (openRequest && typedMessage.type === BeaconMessageType.Acknowledge) {
-        this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
-        logger.log('handleResponse', `acknowledge message received for ${message.id}`)
+        if (!this.acknowledgedRequests.has(message.id)) {
+          this.acknowledgedRequests.add(message.id)
+          this.clearOpenRequestTimeout(message.id)
+          this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
+          logger.log('handleResponse', `acknowledge message received for ${message.id}`)
 
-        this.events
-          .emit(BeaconEvent.ACKNOWLEDGE_RECEIVED, {
-            message: typedMessage as AcknowledgeResponse,
-            extraInfo: {},
-            walletInfo: await this.getWalletInfo()
-          })
-          .catch(console.error)
+          this.events
+            .emit(BeaconEvent.ACKNOWLEDGE_RECEIVED, {
+              message: typedMessage as AcknowledgeResponse,
+              extraInfo: {},
+              walletInfo: await this.getWalletInfo()
+            })
+            .catch((emitError) => logger.error('handleResponse', emitError))
+        }
       } else if (openRequest) {
         if (typedMessage.type === BeaconMessageType.PermissionResponse && appMetadata) {
           await this.appMetadataManager.addAppMetadata(appMetadata)
@@ -418,12 +558,19 @@ export class DAppClient extends Client {
         } else {
           openRequest.resolve({ message, connectionInfo })
         }
-        this.openRequests.delete(typedMessage.id)
+        this.clearOpenRequest(message.id)
+        this.acknowledgedRequests.delete(message.id)
       } else {
         if (typedMessage.type === BeaconMessageType.Disconnect) {
           await handleDisconnect()
         } else if (typedMessage.type === BeaconMessageType.ChangeAccountRequest) {
           await this.onNewAccount(typedMessage as ChangeAccountRequest, connectionInfo)
+        } else {
+          logger.warn('handleResponse', 'received response for unknown or closed request', {
+            id: message.id,
+            type: typedMessage.type,
+            connectionInfo
+          })
         }
       }
 
@@ -432,14 +579,14 @@ export class DAppClient extends Client {
 
         if (
           transport instanceof WalletConnectTransport &&
-          !this.openRequests.has('session_update')
+          !this.openRequests.has(SESSION_UPDATE_REQUEST_ID)
         ) {
-          this.openRequests.set('session_update', new ExposedPromise())
+          this.openRequests.set(SESSION_UPDATE_REQUEST_ID, new ExposedPromise())
         }
       }
     }
 
-    this.storageValidator
+    this.storageValidated = this.storageValidator
       .validate()
       .then(async (isValid) => {
         const account = await this.activeAccountLoaded
@@ -458,16 +605,24 @@ export class DAppClient extends Client {
 
           const nowValid = await this.storageValidator.validate()
 
-          if (!nowValid) {
-            this.resetInvalidState(false)
+          if (!nowValid && account) {
+            await this.deactivateInvalidAccountState('storage_validation_failed')
+          } else if (!nowValid) {
+            await this.resetInvalidState(false)
           }
         }
 
         if (account && account.origin.type !== 'p2p') {
-          this.init()
+          // Fire-and-forget eager init for stored sessions. init() can now
+          // reject (e.g. when an abort path settles _initPromise), so swallow
+          // here; downstream callers of init() handle rejection on their own.
+          this.init().catch((initError) =>
+            logger.error('eager init failed', (initError as Error)?.message ?? initError)
+          )
         }
       })
       .catch((err) => logger.error(err.message))
+    this.retainStorageValidationPromise()
 
     this.sendMetrics(
       'enable-metrics?' + this.addQueryParam('version', SDK_VERSION),
@@ -561,9 +716,49 @@ export class DAppClient extends Client {
     await transport.waitForResolution()
 
     this.openRequestsOtherTabs.add(message.id)
-    isV3
+    const requestPromise = isV3
       ? this.makeRequestV3(message.data, message.id)
       : this.makeRequest(message.data, false, message.id)
+
+    requestPromise.catch((requestError) => {
+      const errorResponse = this.buildDelegatedRequestError(message.id, requestError)
+
+      this.multiTabChannel.postMessage({
+        type: 'RESPONSE',
+        data: {
+          message: errorResponse,
+          connectionInfo: {
+            origin: Origin.WALLETCONNECT,
+            id: ''
+          }
+        },
+        id: message.id
+      })
+      this.clearOpenRequest(message.id)
+    })
+  }
+
+  private buildDelegatedRequestError(id: string, error: unknown): ErrorResponse {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'type' in error &&
+      'errorType' in error &&
+      error.type === BeaconMessageType.Error
+    ) {
+      return {
+        ...(error as ErrorResponse),
+        id
+      }
+    }
+
+    return {
+      id,
+      type: BeaconMessageType.Error,
+      errorType: BeaconErrorType.UNKNOWN_ERROR,
+      senderId: '',
+      version: '2'
+    }
   }
 
   private async createStateSnapshot() {
@@ -597,10 +792,7 @@ export class DAppClient extends Client {
   }
 
   public async initInternalTransports(): Promise<void> {
-    const seed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
-    if (!seed) {
-      throw new Error('Secret seed not found')
-    }
+    const seed = await this.getOrCreateSDKSecretSeed()
     const keyPair = await getKeypairFromSeed(seed)
 
     if (this.postMessageTransport || this.p2pTransport || this.walletConnectTransport) {
@@ -646,6 +838,45 @@ export class DAppClient extends Client {
     this.initEvents()
 
     await this.addListener(this.walletConnectTransport)
+  }
+
+  private async getOrCreateSDKSecretSeed(): Promise<string> {
+    if (this._sdkSecretSeedPromise) {
+      return this._sdkSecretSeedPromise
+    }
+
+    this._sdkSecretSeedPromise = this.loadOrCreateSDKSecretSeed()
+      .finally(() => {
+        this._sdkSecretSeedPromise = undefined
+      })
+      .catch((error) => {
+        throw error
+      })
+
+    return this._sdkSecretSeedPromise
+  }
+
+  private async loadOrCreateSDKSecretSeed(): Promise<string> {
+    const existingSeed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
+    if (this.isValidSDKSecretSeed(existingSeed)) {
+      return existingSeed
+    }
+
+    await this.storage.delete(StorageKey.BEACON_SDK_SECRET_SEED)
+    this._keyPair = new ExposedPromise()
+    this._beaconId = new ExposedPromise()
+    await this.initSDK()
+
+    const restoredSeed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
+    if (this.isValidSDKSecretSeed(restoredSeed)) {
+      return restoredSeed
+    }
+
+    throw new Error('Secret seed not found')
+  }
+
+  private isValidSDKSecretSeed(seed: unknown): seed is string {
+    return typeof seed === 'string' && seed !== '' && seed !== 'undefined' && seed !== 'null'
   }
 
   private initEvents() {
@@ -694,13 +925,22 @@ export class DAppClient extends Client {
         walletInfo
       })
     } else {
-      this.events.emit(BeaconEvent.PERMISSION_REQUEST_ERROR, {
-        errorResponse: { errorType: BeaconErrorType.ABORTED_ERROR } as any,
-        walletInfo
-      })
+      // The WC transport reports session-proposal rejection through this event
+      // when there are no active listeners yet (no peer paired). Reject the
+      // in-flight init promise so `await dapp.requestPermissions()` unwinds
+      // through requestPermissions' catch -> handleRequestError, which both
+      // emits PERMISSION_REQUEST_ERROR and resets transport state. Without
+      // this, the dapp wedges with a pending `_initPromise`.
+      this._initReject?.(this.createAbortedError())
     }
   }
   private async channelClosedHandler(type: TransportType) {
+    if (!this._transport.isResolved()) {
+      await this.events.emit(BeaconEvent.CHANNEL_CLOSED)
+
+      return
+    }
+
     const transport = await this.transport
 
     if (transport.type !== type) {
@@ -708,8 +948,7 @@ export class DAppClient extends Client {
     }
 
     await this.events.emit(BeaconEvent.CHANNEL_CLOSED)
-    this.setActiveAccount(undefined)
-    await this.disconnect()
+    await this.disconnect({ notifyPeers: false })
   }
 
   /**
@@ -719,16 +958,99 @@ export class DAppClient extends Client {
    * as it frees internal subscriptions to the transport and therefore the instance may no longer work properly.
    * If you wish to disconnect your dApp, use `disconnect` instead.
    */
-  async destroy(): Promise<void> {
+  public async destroy(): Promise<void> {
+    this.destroyed = true
+
     await this.createStateSnapshot()
+    await this.destroyInternalTransports()
     await super.destroy()
+  }
+
+  private async destroyInternalTransports(): Promise<void> {
+    this.abortPendingInit()
+
+    const transports: (DappPostMessageTransport | DappP2PTransport | DappWalletConnectTransport)[] =
+      []
+    if (this.postMessageTransport) {
+      transports.push(this.postMessageTransport)
+    }
+    if (this.p2pTransport) {
+      transports.push(this.p2pTransport)
+    }
+    if (this.walletConnectTransport) {
+      transports.push(this.walletConnectTransport)
+    }
+
+    if (transports.length > 0) {
+      await this.cleanup(transports)
+
+      await Promise.all(
+        transports.map(async (transport) => {
+          await transport.disconnect()
+
+          if ('doClientCleanup' in transport) {
+            await transport.doClientCleanup()
+          }
+        })
+      )
+
+      this.postMessageTransport = this.p2pTransport = this.walletConnectTransport = undefined
+      await this.setTransport(undefined)
+    }
+    await this.multiTabChannel.close()
+  }
+
+  private abortPendingInit(): void {
+    this._initReject?.(this.createAbortedError())
+    this._initPromise = undefined
+    this._initReject = undefined
+    this._initSubstratePairing = undefined
+    this._requestPermissionsPromise = undefined
+    this._requestPermissionsKey = undefined
+  }
+
+  private createAbortedError(id: string = ''): ErrorResponse {
+    return {
+      type: BeaconMessageType.Error,
+      id,
+      senderId: '',
+      version: '2',
+      errorType: BeaconErrorType.ABORTED_ERROR
+    }
+  }
+
+  /**
+   * @internal
+   */
+  public isDestroyed(): boolean {
+    return this.destroyed
+  }
+
+  private assertNotDestroyed(): void {
+    if (this.destroyed) {
+      throw new Error('DAppClient has been destroyed and cannot be used again.')
+    }
   }
 
   public async init(
     transport?: Transport<any>,
     substratePairing?: boolean
   ): Promise<TransportType> {
+    this.assertNotDestroyed()
+
+    const requestedSubstratePairing = substratePairing === true
+
     if (this._initPromise) {
+      if (
+        !transport &&
+        this._initReject &&
+        this._initSubstratePairing !== requestedSubstratePairing
+      ) {
+        throw new Error(
+          'Cannot start a permission request with different pairing options while another pairing is pending'
+        )
+      }
+
       return this._initPromise
     }
 
@@ -738,34 +1060,63 @@ export class DAppClient extends Client {
       //
     }
 
-    this._initPromise = new Promise(async (resolve) => {
-      if (transport) {
-        await this.addListener(transport)
+    this._initPromise = new Promise(async (resolve, reject) => {
+      this._initSubstratePairing = requestedSubstratePairing
+      // Capture reject so abort paths (modal close, transport-level rejection)
+      // can unwedge a pending `await this.init()`. _initReject is cleared by
+      // the .finally below whether the promise resolves or rejects, so the
+      // field accurately means "currently rejectable" rather than "most recent
+      // rejector".
+      this._initReject = (reason) => {
+        this._initPromise = undefined
+        reject(reason)
+      }
+      // The body uses `new Promise(async ...)` (an anti-pattern: unhandled
+      // throws are swallowed). Wrap it so any unexpected throw rejects the
+      // promise instead of stranding `await this.init()` callers forever.
+      // A proper structural fix would replace the async-executor entirely
+      // with chained promises; left as follow-up to keep this PR focused.
+      try {
+        if (transport) {
+          await this.addListener(transport)
 
-        resolve(await super.init(transport))
-      } else if (this._transport.isSettled()) {
-        await (await this.transport).connect()
+          resolve(await super.init(transport))
+        } else if (this._transport.isSettled()) {
+          await (await this.transport).connect()
 
-        resolve(await super.init(await this.transport))
-      } else {
-        const activeAccount = await this.getActiveAccount()
-        const stopListening = () => {
-          if (this.postMessageTransport) {
-            this.postMessageTransport.stopListeningForNewPeers().catch(console.error)
+          resolve(await super.init(await this.transport))
+        } else {
+          const activeAccount = await this.getActiveAccount()
+          const stopListening = () => {
+            const onError = (err: unknown) => logger.error('stopListeningForNewPeers', err)
+            if (this.postMessageTransport) {
+              this.postMessageTransport.stopListeningForNewPeers().catch(onError)
+            }
+            if (this.p2pTransport) {
+              this.p2pTransport.stopListeningForNewPeers().catch(onError)
+            }
+            if (this.walletConnectTransport) {
+              this.walletConnectTransport.stopListeningForNewPeers().catch(onError)
+            }
           }
-          if (this.p2pTransport) {
-            this.p2pTransport.stopListeningForNewPeers().catch(console.error)
-          }
-          if (this.walletConnectTransport) {
-            this.walletConnectTransport.stopListeningForNewPeers().catch(console.error)
-          }
-        }
 
-        await this.initInternalTransports()
+          await this.initInternalTransports()
 
-        if (!this.postMessageTransport || !this.p2pTransport || !this.walletConnectTransport) {
-          return
-        }
+          if (!this.postMessageTransport || !this.p2pTransport || !this.walletConnectTransport) {
+            // Bare return here used to strand the promise forever -- no UI is
+            // emitted, no peer ever pairs, no abort path fires. Reject explicitly
+            // so callers see a deterministic error.
+            const noTransportError: ErrorResponse = {
+              type: BeaconMessageType.Error,
+              id: '',
+              senderId: '',
+              version: '2',
+              errorType: BeaconErrorType.UNKNOWN_ERROR
+            }
+            reject(noTransportError)
+
+            return
+          }
 
         this.postMessageTransport.connect().then().catch(console.error)
 
@@ -857,7 +1208,10 @@ export class DAppClient extends Client {
             ])
             this.postMessageTransport = this.walletConnectTransport = this.p2pTransport = undefined
             this._activeAccount.isResolved() && this.clearActiveAccount()
-            this._initPromise = undefined
+            // Reject _initPromise so any awaiter (makeRequest -> requestPermissions)
+            // unwinds via handleRequestError instead of hanging. _initReject
+            // also clears _initPromise as a side effect.
+            this._initReject?.(this.createAbortedError())
           }
 
           const serializer = new Serializer()
@@ -868,16 +1222,23 @@ export class DAppClient extends Client {
               logger.error(err)
               await this.hideUI(['alert']) // hide pairing alert
               setTimeout(() => this.events.emit(BeaconEvent.GENERIC_ERROR, err.message), 1000)
-              abortHandler()
+              abortHandler().catch((abortErr) => logger.warn('init', 'abortHandler', abortErr))
               resolve('')
               return
             }
             resolve(await serializer.serialize(await p2pTransport.getPairingRequestInfo()))
           })
 
-          const walletConnectPeerInfo = new Promise<string>(async (resolve) => {
-            resolve((await walletConnectTransport.getPairingRequestInfo()).uri)
-          })
+          const walletConnectPeerInfo = createLazyPromise(() =>
+            walletConnectTransport
+              .getPairingRequestInfo()
+              .then((pairingRequestInfo) => pairingRequestInfo.uri)
+              .catch((error) => {
+                logger.warn('init', 'walletconnect pairing request failed', error)
+
+                return ''
+              })
+          )
 
           const postmessagePeerInfo = new Promise<string>(async (resolve) => {
             resolve(await serializer.serialize(await postMessageTransport.getPairingRequestInfo()))
@@ -898,16 +1259,87 @@ export class DAppClient extends Client {
             .catch((emitError) => console.warn(emitError))
         }
       }
+      } catch (err) {
+        // An async-executor throw would otherwise be silently swallowed,
+        // leaving _initPromise pending and every awaiter stranded.
+        reject(err)
+      }
     })
 
+    // Drop the _initReject reference whether init resolved or rejected, so the
+    // field is never stale. Using an explicit helper keeps the dangling
+    // observer chain out of statement position (which the lint rules forbid).
+    this.clearInitRejectOnSettle(this._initPromise)
+
     return this._initPromise
+  }
+
+  /**
+   * Attach a settle observer to {@link _initPromise} that drops
+   * {@link _initReject} once the promise settles (resolved or rejected).
+   * Errors on the observer chain are swallowed; only the original
+   * {@link _initPromise} surfaces them to its awaiters.
+   */
+  private clearInitRejectOnSettle(initPromise: Promise<TransportType>): void {
+    initPromise
+      .finally(() => {
+        this._initReject = undefined
+        this._initSubstratePairing = undefined
+      })
+      .catch(() => {
+        // observer-only; original promise's rejection is delivered to awaiters
+      })
   }
 
   /**
    * Returns the active account
    */
   public async getActiveAccount(): Promise<AccountInfo | undefined> {
+    this.assertNotDestroyed()
+
     return this._activeAccount.promise
+  }
+
+  private retainStorageValidationPromise(): void {
+    // Constructor validation is intentionally fire-and-forget, but retaining
+    // the promise gives tests a deterministic hook without changing public API.
+    this.storageValidated.catch((err) => logger.error(err.message))
+  }
+
+  private async deactivateInvalidAccountState(
+    reason: InvalidAccountDeactivatedReason
+  ): Promise<void> {
+    if (this.hasEmittedInvalidAccountDeactivated) {
+      return
+    }
+
+    this.hasEmittedInvalidAccountDeactivated = true
+    logger.log('deactivateInvalidAccountState', reason)
+    if (reason === 'missing_active_account') {
+      await this.repairMissingActiveAccount()
+    } else {
+      await this.resetInvalidState(false)
+    }
+    await this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED, { reason })
+  }
+
+  private async repairMissingActiveAccount(): Promise<void> {
+    this._activeAccount = ExposedPromise.resolve<AccountInfo | undefined>(undefined)
+    await this.storage.delete(StorageKey.ACTIVE_ACCOUNT)
+    await this.setActivePeer(undefined)
+  }
+
+  private hasStoredActiveAccountPointer(): boolean {
+    // LocalStorage-specific repair: that backend is where literal sentinel strings were produced.
+    if (typeof localStorage === 'undefined') {
+      return false
+    }
+
+    try {
+      return localStorage.getItem(this.storage.getPrefixedKey(StorageKey.ACTIVE_ACCOUNT)) !== null
+    } catch {
+      return false
+    }
   }
 
   private async isInvalidState(account: AccountInfo) {
@@ -918,11 +1350,14 @@ export class DAppClient extends Client {
   }
 
   private async resetInvalidState(emit: boolean = true) {
-    this.accountManager.removeAllAccounts()
+    await this.accountManager.removeAllAccounts()
     this._activeAccount = ExposedPromise.resolve<AccountInfo | undefined>(undefined)
-    this.storage.set(StorageKey.ACTIVE_ACCOUNT, undefined)
-    emit && this.events.emit(BeaconEvent.INVALID_ACTIVE_ACCOUNT_STATE)
-    !emit && this.hideUI(['alert'])
+    await this.storage.delete(StorageKey.ACTIVE_ACCOUNT)
+    if (emit) {
+      await this.events.emit(BeaconEvent.INVALID_ACTIVE_ACCOUNT_STATE)
+    } else {
+      await this.hideUI(['alert'])
+    }
     await Promise.all([
       this.postMessageTransport?.disconnect(),
       this.walletConnectTransport?.disconnect()
@@ -939,7 +1374,9 @@ export class DAppClient extends Client {
    * @param account The account that will be set as the active account
    */
   public async setActiveAccount(account?: AccountInfo): Promise<void> {
-    if (!this.isGetActiveAccountHandled) {
+    const activeAccountAlreadyCleared = !account && (await this.isActiveAccountAlreadyCleared())
+
+    if (!activeAccountAlreadyCleared && !this.isGetActiveAccountHandled) {
       console.warn(
         `An active account has been received, but no active subscription was found for BeaconEvent.ACTIVE_ACCOUNT_SET.`
       )
@@ -956,10 +1393,10 @@ export class DAppClient extends Client {
 
     // when I'm resetting the activeAccount
     if (!account && this._activeAccount.isResolved() && (await this.getActiveAccount())) {
-      const transport = await this.transport
+      const transport = this._transport.isResolved() ? await this.transport : undefined
       const activeAccount = await this.getActiveAccount()
 
-      if (!transport || !activeAccount) {
+      if (!activeAccount) {
         return
       }
 
@@ -975,23 +1412,15 @@ export class DAppClient extends Client {
             type: 'DISCONNECT'
           })
         }
-        Array.from(this.openRequests.entries())
-          .filter(([id, _promise]) => id !== 'session_update')
-          .forEach(([id, promise]) => {
-            promise.reject({
-              type: BeaconMessageType.Error,
-              errorType: BeaconErrorType.ABORTED_ERROR,
-              id,
-              senderId: '',
-              version: '2'
-            })
-          })
-        this.openRequests.clear()
+        this.abortOpenRequests()
         this.debounceSetActiveAccount = false
       }
     }
 
-    if (this._activeAccount.isSettled()) {
+    if (activeAccountAlreadyCleared) {
+      // Keep peer and transport cleanup below idempotent, but do not write storage or emit
+      // another ACTIVE_ACCOUNT_SET(undefined) for an already-empty account.
+    } else if (this._activeAccount.isSettled()) {
       // If the promise has already been resolved we need to create a new one.
       this._activeAccount = ExposedPromise.resolve<AccountInfo | undefined>(account)
     } else {
@@ -1034,14 +1463,42 @@ export class DAppClient extends Client {
       await this.setTransport(undefined)
     }
 
-    await this.storage.set(
-      StorageKey.ACTIVE_ACCOUNT,
-      account ? account.accountIdentifier : undefined
-    )
+    if (account) {
+      await this.storage.set(StorageKey.ACTIVE_ACCOUNT, account.accountIdentifier)
+    } else if (!activeAccountAlreadyCleared) {
+      await this.storage.delete(StorageKey.ACTIVE_ACCOUNT)
+    }
 
-    await this.events.emit(BeaconEvent.ACTIVE_ACCOUNT_SET, account)
+    if (!activeAccountAlreadyCleared) {
+      await this.events.emit(BeaconEvent.ACTIVE_ACCOUNT_SET, account)
+    }
 
     return
+  }
+
+  private async isActiveAccountAlreadyCleared(): Promise<boolean> {
+    return this._activeAccount.isResolved() && !(await this.getActiveAccount())
+  }
+
+  private async recoverActiveAccountFromAccountsChange(): Promise<void> {
+    const activeAccountIdentifier = await this.storage.get(StorageKey.ACTIVE_ACCOUNT)
+    if (!activeAccountIdentifier || activeAccountIdentifier === 'undefined') {
+      return
+    }
+
+    if (this._activeAccount.isResolved()) {
+      const activeAccount = await this.getActiveAccount()
+      if (activeAccount?.accountIdentifier === activeAccountIdentifier) {
+        return
+      }
+    }
+
+    const account = await this.getAccount(activeAccountIdentifier)
+    if (!account) {
+      return
+    }
+
+    await this.setActiveAccount(account)
   }
 
   /**
@@ -1135,39 +1592,21 @@ export class DAppClient extends Client {
     }
   }
 
-  private async updateMetricsStorage(payload: string) {
-    const queue = await this.beaconIDB.getAllKeys('metrics')
-
-    if (queue.length >= 1000) {
-      const key = queue.shift()!
-      this.beaconIDB.delete(key.toString(), 'metrics')
-    }
-
-    this.beaconIDB.set(String(Date.now()), payload, 'metrics')
-  }
-
+  // Metrics phone home to a Papers-controlled endpoint that the ECAD fork
+  // does not control or ingest. The disabled path also queued payloads into
+  // IndexedDB before the DB was ready, surfacing as unhandledRejection.
+  // Hard-disabled here; full removal (option, storage key, IDB store,
+  // BACKEND_URL constant, all call sites) tracked as a follow-up.
+  /* eslint-disable @typescript-eslint/no-unused-vars -- hard-disabled stub keeps its signature for call-site type-safety; params are intentionally unused pending full removal. */
   private sendMetrics(
-    uri: string,
-    options?: RequestInit,
-    thenHandler?: (res: Response) => void,
-    catchHandler?: (err: Error) => void
-  ) {
-    if (!this.enableMetrics && uri === 'performance-metrics/save') {
-      options && this.updateMetricsStorage(options.body as string)
-    }
-    if (!this.enableMetrics) {
-      return
-    }
-
-    fetch(`${BACKEND_URL}/${uri}`, options)
-      .then((res) => thenHandler && thenHandler(res))
-      .catch((err: Error) => {
-        console.warn('Network error encountered. Metrics sharing have been automatically disabled.')
-        logger.error(err.message)
-        this.enableMetrics = false // in the event of a network error, stop sending metrics
-        catchHandler && catchHandler(err)
-      })
+    _uri: string,
+    _options?: RequestInit,
+    _thenHandler?: (res: Response) => void,
+    _catchHandler?: (err: Error) => void
+  ): void {
+    return
   }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   private async checkMakeRequest() {
     const isResolved = this._transport.isResolved()
@@ -1227,18 +1666,25 @@ export class DAppClient extends Client {
   /**
    * Remove all peers and all accounts that have been connected through those peers
    */
-  public async removeAllPeers(sendDisconnectToPeers: boolean = false): Promise<void> {
-    const transport = await this.transport
+  public async removeAllPeers(
+    sendDisconnectToPeers: boolean = false,
+    options: DAppClientRemoveAllPeersOptions = {}
+  ): Promise<void> {
+    const transport = (await this.transport) as DAppInternalTransport
 
     const peers: ExtendedPeerInfo[] = await transport.getPeers()
-    const removePeerResult = transport.removeAllPeers()
+    const removePeerResult = await transport.removeAllPeers()
 
     await this.removeAccountsForPeers(peers)
 
     if (sendDisconnectToPeers) {
       const disconnectPromises = peers.map((peer) => this.sendDisconnectToPeer(peer, transport))
 
-      await Promise.all(disconnectPromises)
+      if (options.ignoreDisconnectErrors) {
+        await Promise.allSettled(disconnectPromises)
+      } else {
+        await Promise.all(disconnectPromises)
+      }
     }
 
     return removePeerResult
@@ -1379,16 +1825,20 @@ export class DAppClient extends Client {
 
     const logId = `makeRequestV3 ${Date.now()}`
     logger.time(true, logId)
-    const { message: response, connectionInfo } = await this.makeRequestV3<
-      PermissionRequestV3<string>,
-      BeaconMessageWrapper<PermissionResponseV3<string>>
-    >(request).catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request as any, requestError)
-    })
+    let resolved: {
+      message: BeaconMessageWrapper<PermissionResponseV3>
+      connectionInfo: ConnectionContext
+    }
+    try {
+      resolved = await this.makeRequestV3<
+        PermissionRequestV3,
+        BeaconMessageWrapper<PermissionResponseV3>
+      >(request)
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    const { message: response, connectionInfo } = resolved
     logger.time(false, logId)
 
     this.sendMetrics('performance-metrics/save', await this.buildPayload('connect', 'start'))
@@ -1472,15 +1922,17 @@ export class DAppClient extends Client {
         >(request)
       : this.makeRequestBC<any, any>(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request as any, requestError)
-    })
-
-    const { message: response, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message: response, connectionInfo } = resolved
 
     logger.time(false, logId)
     this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'success'))
@@ -1514,20 +1966,43 @@ export class DAppClient extends Client {
   public async requestPermissions(
     input?: RequestPermissionInput
   ): Promise<PermissionResponseOutput> {
-    if ((input as any)?.network) {
-      throw new Error(
-        '[BEACON] the "network" property is no longer accepted in input. Please provide it when instantiating DAppClient.'
-      )
+    this.assertNotDestroyed()
+
+    const scopes = this.getPermissionRequestScopes(input)
+    const requestPermissionsKey = this.getPermissionRequestKey(scopes)
+
+    if (this._requestPermissionsPromise) {
+      if (this._requestPermissionsKey !== requestPermissionsKey) {
+        throw new Error(
+          'Cannot start a permission request with different scopes while another permission request is pending'
+        )
+      }
+
+      return this._requestPermissionsPromise
     }
 
+    const requestPermissionsPromise = this.requestPermissionsInternal(scopes)
+    this._requestPermissionsPromise = requestPermissionsPromise
+    this._requestPermissionsKey = requestPermissionsKey
+
+    try {
+      return await requestPermissionsPromise
+    } finally {
+      if (this._requestPermissionsPromise === requestPermissionsPromise) {
+        this._requestPermissionsPromise = undefined
+        this._requestPermissionsKey = undefined
+      }
+    }
+  }
+
+  private async requestPermissionsInternal(
+    scopes: PermissionScope[]
+  ): Promise<PermissionResponseOutput> {
     const request: PermissionRequestInput = {
       appMetadata: await this.getOwnAppMetadata(),
       type: BeaconMessageType.PermissionRequest,
       network: this.network,
-      scopes:
-        input && input.scopes
-          ? input.scopes
-          : [PermissionScope.OPERATION_REQUEST, PermissionScope.SIGN]
+      scopes
     }
 
     this.analytics.track('event', 'DAppClient', 'Permission requested')
@@ -1542,15 +2017,17 @@ export class DAppClient extends Client {
         ? this.makeRequest<PermissionRequest, PermissionResponse>(request, undefined, undefined)
         : this.makeRequestBC<PermissionRequest, PermissionResponse>(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request, requestError)
-    })
-
-    const { message, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message, connectionInfo } = resolved
     logger.time(false, logId)
     this.sendMetrics('performance-metrics/save', await this.buildPayload('connect', 'success'))
 
@@ -1584,6 +2061,22 @@ export class DAppClient extends Client {
     })
 
     return output
+  }
+
+  private getPermissionRequestScopes(input?: RequestPermissionInput): PermissionScope[] {
+    if (input && 'network' in input) {
+      throw new Error(
+        '[BEACON] the "network" property is no longer accepted in input. Please provide it when instantiating DAppClient.'
+      )
+    }
+
+    return input && input.scopes
+      ? input.scopes
+      : [PermissionScope.OPERATION_REQUEST, PermissionScope.SIGN]
+  }
+
+  private getPermissionRequestKey(scopes: PermissionScope[]): string {
+    return [...scopes].sort().join('|')
   }
 
   /**
@@ -1620,15 +2113,17 @@ export class DAppClient extends Client {
       ? this.makeRequest<ProofOfEventChallengeRequest, ProofOfEventChallengeResponse>(request)
       : this.makeRequestBC<ProofOfEventChallengeRequest, ProofOfEventChallengeResponse>(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request, requestError)
-    })
-
-    const { message, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message, connectionInfo } = resolved
 
     logger.time(false, logId)
     this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'success'))
@@ -1693,15 +2188,17 @@ export class DAppClient extends Client {
           SimulatedProofOfEventChallengeResponse
         >(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request, requestError)
-    })
-
-    const { message, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message, connectionInfo } = resolved
 
     logger.time(false, logId)
     this.analytics.track(
@@ -1787,15 +2284,17 @@ export class DAppClient extends Client {
       ? this.makeRequest<SignPayloadRequest, SignPayloadResponse>(request)
       : this.makeRequestBC<SignPayloadRequest, SignPayloadResponse>(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request, requestError)
-    })
-
-    const { message, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message, connectionInfo } = resolved
 
     logger.time(false, logId)
     this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'success'))
@@ -1903,15 +2402,17 @@ export class DAppClient extends Client {
       ? this.makeRequest<OperationRequest, OperationResponse>(request)
       : this.makeRequestBC<OperationRequest, OperationResponse>(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request, requestError)
-    })
-
-    const { message, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message, connectionInfo } = resolved
 
     logger.time(false, logId)
     this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'success'))
@@ -1963,15 +2464,17 @@ export class DAppClient extends Client {
       ? this.makeRequest<BroadcastRequest, BroadcastResponse>(request)
       : this.makeRequestBC<BroadcastRequest, BroadcastResponse>(request)
 
-    res.catch(async (requestError: ErrorResponse) => {
-      requestError.errorType === BeaconErrorType.ABORTED_ERROR
-        ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
-        : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
-      logger.time(false, logId)
-      throw await this.handleRequestError(request, requestError)
-    })
-
-    const { message, connectionInfo } = (await res)!
+    let resolved
+    try {
+      resolved = await res
+    } catch (requestError) {
+      await this.runRequestErrorSideEffects(request, requestError, logId)
+      throw requestError
+    }
+    if (!resolved) {
+      throw new Error('Internal error: makeRequest returned no result')
+    }
+    const { message, connectionInfo } = resolved
 
     logger.time(false, logId)
     this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'success'))
@@ -2051,13 +2554,17 @@ export class DAppClient extends Client {
    * @param peersToRemove An array of peers for which accounts should be removed
    */
   private async removeAccountsForPeers(peersToRemove: ExtendedPeerInfo[]): Promise<void> {
+    if (peersToRemove.length === 0) {
+      return
+    }
+
     const peerIdsToRemove = peersToRemove.map((peer) => peer.senderId)
 
     return this.removeAccountsForPeerIds(peerIdsToRemove)
   }
 
   private async removeAccountsForPeerIds(peerIds: string[]): Promise<void> {
-    const accounts = await this.accountManager.getAccounts()
+    const accounts = (await this.accountManager.getAccounts()) ?? []
 
     // Remove all accounts with origin of the specified peer
     const accountsToRemove = accounts.filter((account) => peerIds.includes(account.senderId))
@@ -2074,6 +2581,48 @@ export class DAppClient extends Client {
         await this.setActiveAccount(undefined)
       }
     }
+  }
+
+  /**
+   * Run the standard request-error side effects (abort/error metric,
+   * timer stop, {@link handleRequestError}) on a single awaited control
+   * flow so callers can re-throw the original {@link ErrorResponse} without
+   * leaking an UnhandledPromiseRejection.
+   *
+   * Why this exists: every request method historically used a fire-and-
+   * forget `res.catch(handler)` whose handler did `throw await
+   * this.handleRequestError(...)`. The catch returned a detached promise
+   * nobody awaited; `handleRequestError`'s thrown wrapped error became an
+   * unhandled rejection. The bug rarely surfaced before the dapp-init
+   * promise was made rejectable, because pre-pairing rejection paths used
+   * to hang instead of routing through these handlers. Once init started
+   * rejecting reliably, the unhandled rejection started firing on every
+   * WC session-proposal rejection. We swallow the wrapped throw here so
+   * callers can re-throw the original `ErrorResponse`, matching the
+   * post-pairing rejection contract at the openRequest path.
+   *
+   * @param request The request we sent
+   * @param requestError The error we received
+   * @param logId The {@link logger.time} label opened for this request
+   */
+  private async runRequestErrorSideEffects(
+    request: unknown,
+    rawError: unknown,
+    logId: string
+  ): Promise<void> {
+    // V3 request shapes (PermissionRequestV3, BlockchainRequestV3) flow through
+    // here too. They aren't part of BeaconRequestInputMessage, but
+    // handleRequestError only inspects `.type` plus optional fields it already
+    // guards on. Catch params are `unknown` under strict TS, same story.
+    const typedRequest = request as BeaconRequestInputMessage
+    const requestError = rawError as ErrorResponse
+    if (requestError.errorType === BeaconErrorType.ABORTED_ERROR) {
+      this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
+    } else {
+      this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
+    }
+    logger.time(false, logId)
+    await this.handleRequestError(typedRequest, requestError).catch(() => undefined)
   }
 
   /**
@@ -2374,19 +2923,8 @@ export class DAppClient extends Client {
   ) {
     const messageId = otherTabMessageId ?? (await generateGUID())
 
-    if (this._initPromise && this.isInitPending) {
-      await Promise.all([
-        this.postMessageTransport?.disconnect(),
-        this.walletConnectTransport?.disconnect()
-      ])
-      this._initPromise = undefined
-      this.hideUI(['toast'])
-    }
-
     logger.log('makeRequest', 'starting')
-    this.isInitPending = true
     await this.init()
-    this.isInitPending = false
     logger.log('makeRequest', 'after init')
 
     if (await this.addRequestAndCheckIfRateLimited()) {
@@ -2429,24 +2967,44 @@ export class DAppClient extends Client {
       this.addOpenRequest(request.id, exposed)
     }
 
-    const payload = await new Serializer().serialize(request)
-
-    const account = await this.getActiveAccount()
-
-    const peer = await this.getPeer(account)
-
-    const walletInfo = await this.getWalletInfo(peer, account)
-
-    logger.log('makeRequest', 'sending message', request)
     try {
-      ;(await this.transport).send(payload, peer)
+      const payload = await new Serializer().serialize(request)
+
+      const account = await this.getActiveAccount()
+
+      const peer = await this.getPeer(account)
+
+      const walletInfo = await this.getWalletInfo(peer, account)
+
+      logger.log('makeRequest', 'sending message', request)
+      await (await this.transport).send(payload, peer)
       if (
         request.type !== BeaconMessageType.PermissionRequest ||
         (this._activeAccount.isResolved() && (await this._activeAccount.promise))
       ) {
         this.tryToAppSwitch()
       }
+
+      if (!otherTabMessageId) {
+        this.events
+          .emit(messageEvents[requestInput.type].sent, {
+            walletInfo: {
+              ...walletInfo,
+              name: walletInfo.name ?? 'Wallet'
+            },
+            extraInfo: {
+              resetCallback: async () => {
+                await this.disconnect()
+              }
+            }
+          })
+          .catch((emitError) => logger.warn('makeRequest', emitError))
+      }
     } catch (sendError) {
+      if (!skipResponse) {
+        this.clearOpenRequest(request.id)
+      }
+
       this.events.emit(BeaconEvent.INTERNAL_ERROR, {
         text: 'Unable to send message. If this problem persists, please reset the connection and pair your wallet again.',
         buttons: [
@@ -2460,22 +3018,6 @@ export class DAppClient extends Client {
         ]
       })
       throw sendError
-    }
-
-    if (!otherTabMessageId) {
-      this.events
-        .emit(messageEvents[requestInput.type].sent, {
-          walletInfo: {
-            ...walletInfo,
-            name: walletInfo.name ?? 'Wallet'
-          },
-          extraInfo: {
-            resetCallback: async () => {
-              this.disconnect()
-            }
-          }
-        })
-        .catch((emitError) => console.warn(emitError))
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2500,20 +3042,9 @@ export class DAppClient extends Client {
     message: U
     connectionInfo: ConnectionContext
   }> {
-    if (this._initPromise && this.isInitPending) {
-      await Promise.all([
-        this.postMessageTransport?.disconnect(),
-        this.walletConnectTransport?.disconnect()
-      ])
-      this._initPromise = undefined
-      this.hideUI(['toast'])
-    }
-
     const messageId = otherTabMessageId ?? (await generateGUID())
     logger.log('makeRequest', 'starting')
-    this.isInitPending = true
     await this.init(undefined, true)
-    this.isInitPending = false
     logger.log('makeRequest', 'after init')
 
     if (await this.addRequestAndCheckIfRateLimited()) {
@@ -2545,24 +3076,41 @@ export class DAppClient extends Client {
 
     this.addOpenRequest(request.id, exposed)
 
-    const payload = await new Serializer().serialize(request)
-
-    const account = await this.getActiveAccount()
-
-    const peer = await this.getPeer(account)
-
-    const walletInfo = await this.getWalletInfo(peer, account)
-
-    logger.log('makeRequest', 'sending message', request)
     try {
-      ;(await this.transport).send(payload, peer)
+      const payload = await new Serializer().serialize(request)
+
+      const account = await this.getActiveAccount()
+
+      const peer = await this.getPeer(account)
+
+      const walletInfo = await this.getWalletInfo(peer, account)
+
+      logger.log('makeRequest', 'sending message', request)
+      await (await this.transport).send(payload, peer)
       if (
         request.message.type !== BeaconMessageType.PermissionRequest ||
         (this._activeAccount.isResolved() && (await this._activeAccount.promise))
       ) {
         this.tryToAppSwitch()
       }
+
+      const index = requestInput.type as BeaconMessageType
+
+      this.events
+        .emit(messageEvents[index].sent, {
+          walletInfo: {
+            ...walletInfo,
+            name: walletInfo.name ?? 'Wallet'
+          },
+          extraInfo: {
+            resetCallback: async () => {
+              await this.disconnect()
+            }
+          }
+        })
+        .catch((emitError) => logger.warn('makeRequestV3', emitError))
     } catch (sendError) {
+      this.clearOpenRequest(request.id)
       this.events.emit(BeaconEvent.INTERNAL_ERROR, {
         text: 'Unable to send message. If this problem persists, please reset the connection and pair your wallet again.',
         buttons: [
@@ -2577,22 +3125,6 @@ export class DAppClient extends Client {
       })
       throw sendError
     }
-
-    const index = requestInput.type as any as BeaconMessageType
-
-    this.events
-      .emit(messageEvents[index].sent, {
-        walletInfo: {
-          ...walletInfo,
-          name: walletInfo.name ?? 'Wallet'
-        },
-        extraInfo: {
-          resetCallback: async () => {
-            this.disconnect()
-          }
-        }
-      })
-      .catch((emitError) => console.warn(emitError))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return exposed.promise as any // TODO: fix type
@@ -2662,27 +3194,188 @@ export class DAppClient extends Client {
     return exposed.promise
   }
 
-  public async disconnect() {
-    if (!this._transport.isResolved()) {
-      throw new Error('No transport available.')
+  /**
+   * Disconnects all resolved transports (postMessage, P2P, WalletConnect), removes their peers,
+   * and clears active account state. After calling, the DAppClient remains usable for a new
+   * requestPermissions().
+   */
+  public async disconnect(options: DAppClientDisconnectOptions = {}) {
+    const { notifyPeers = true } = options
+
+    if (!this._disconnectPromise) {
+      this._disconnectNotifyPeers = false
     }
 
-    const transport = await this.transport
+    this._disconnectNotifyPeers = this._disconnectNotifyPeers || notifyPeers
+    if (this._disconnectPromise) {
+      return this._disconnectPromise
+    }
+
+    this._disconnectPromise = (async () => this.disconnectInternal())().finally(() => {
+      this._disconnectPromise = undefined
+      this._disconnectNotifyPeers = false
+    })
+
+    return this._disconnectPromise
+  }
+
+  private async disconnectInternal(): Promise<void> {
+    this.abortPendingInit()
+
+    if (!this._transport.isResolved()) {
+      const initializedTransports = this.getInitializedTransports()
+      this.abortOpenRequests()
+      await this.removeAllPeersFromTransports(initializedTransports)
+      await this.clearActiveAccount()
+      await this.disconnectResolvedTransports(initializedTransports)
+      this.clearInternalTransportReferences()
+
+      return
+    }
+
+    const transport = (await this.transport) as DAppInternalTransport
 
     if (transport.connectionStatus === TransportStatus.NOT_CONNECTED) {
-      throw new Error('Not connected.')
+      await this.clearActiveAccount()
+      this.abortOpenRequests()
+
+      return
     }
 
     await this.createStateSnapshot()
     this.sendMetrics('performance-metrics/save', await this.buildPayload('disconnect', 'start'))
+    this.abortOpenRequests()
+    const transports = this.getResolvedTransports(transport)
+    await this.removeAllPeersFromTransports(transports)
     await this.clearActiveAccount()
-    if (!(transport instanceof WalletConnectTransport)) {
-      await transport.disconnect()
+    await this.disconnectResolvedTransports(transports)
+    this.clearInternalTransportReferences()
+    this.sendMetrics('performance-metrics/save', await this.buildPayload('disconnect', 'success'))
+  }
+
+  private getInitializedTransports(): DAppInternalTransport[] {
+    const transports: DAppInternalTransport[] = []
+
+    const addTransport = (transport?: DAppInternalTransport): void => {
+      if (transport && !transports.includes(transport)) {
+        transports.push(transport)
+      }
     }
+
+    addTransport(this.postMessageTransport)
+    addTransport(this.p2pTransport)
+    addTransport(this.walletConnectTransport)
+
+    return transports
+  }
+
+  private getResolvedTransports(selectedTransport: DAppInternalTransport): DAppInternalTransport[] {
+    const transports = this.getInitializedTransports()
+
+    const addTransport = (transport?: DAppInternalTransport): void => {
+      if (transport && !transports.includes(transport)) {
+        transports.push(transport)
+      }
+    }
+
+    addTransport(this.postMessageTransport)
+    addTransport(this.p2pTransport)
+    addTransport(this.walletConnectTransport)
+    addTransport(selectedTransport)
+
+    return transports
+  }
+
+  private clearInternalTransportReferences(): void {
     this.postMessageTransport = undefined
     this.p2pTransport = undefined
     this.walletConnectTransport = undefined
-    this.sendMetrics('performance-metrics/save', await this.buildPayload('disconnect', 'success'))
+  }
+
+  private async removeAllPeersFromTransports(transports: DAppInternalTransport[]): Promise<void> {
+    const peersByTransport: PeersForTransport[] = await Promise.all(
+      transports.map(async (transport): Promise<PeersForTransport> => {
+        const transportPeers: ExtendedPeerInfo[] = await transport.getPeers()
+
+        return {
+          transport,
+          peers: transportPeers
+        }
+      })
+    )
+
+    await Promise.all(peersByTransport.map(({ transport }) => transport.removeAllPeers()))
+
+    const peersToRemove = peersByTransport.flatMap(({ peers: transportPeers }) => transportPeers)
+    await this.removeAccountsForPeers(peersToRemove)
+
+    // If cleanup already removed peers, a late notify upgrade has nothing left to notify.
+    const sendDisconnectToPeers = this._disconnectNotifyPeers
+
+    if (!sendDisconnectToPeers) {
+      return
+    }
+
+    await Promise.allSettled(
+      this.getUniquePeerNotifications(peersByTransport).map(({ transport, peer }) =>
+        this.sendDisconnectToPeer(peer, transport)
+      )
+    )
+  }
+
+  private getUniquePeerNotifications(peersByTransport: PeersForTransport[]): PeerNotification[] {
+    const notifications: PeerNotification[] = []
+    const seen = new Set<string>()
+
+    peersByTransport.forEach(({ transport, peers: transportPeers }) => {
+      transportPeers.forEach((peer) => {
+        const key = this.getPeerNotificationKey(transport, peer)
+        if (seen.has(key)) {
+          return
+        }
+
+        seen.add(key)
+        notifications.push({ transport, peer })
+      })
+    })
+
+    return notifications
+  }
+
+  private getPeerNotificationKey(transport: DAppInternalTransport, peer: ExtendedPeerInfo): string {
+    return [transport.type, peer.publicKey, peer.senderId, peer.id].filter(Boolean).join(':')
+  }
+
+  private async disconnectResolvedTransports(transports: DAppInternalTransport[]): Promise<void> {
+    const results = await Promise.allSettled(
+      transports.map(async (transport) => {
+        if (this.isTransportConnected(transport)) {
+          await transport.disconnect()
+        }
+
+        if (this.hasClientCleanup(transport)) {
+          await transport.doClientCleanup()
+        }
+      })
+    )
+
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        logger.warn('disconnectResolvedTransports', result.reason)
+      }
+    })
+  }
+
+  private hasClientCleanup(
+    transport: DAppInternalTransport
+  ): transport is DAppInternalTransport & TransportWithClientCleanup {
+    const transportWithClientCleanup = transport as Partial<TransportWithClientCleanup>
+
+    return typeof transportWithClientCleanup.doClientCleanup === 'function'
+  }
+
+  private isTransportConnected(transport: DAppInternalTransport): boolean {
+    return transport.connectionStatus !== TransportStatus.NOT_CONNECTED
   }
 
   /**
@@ -2702,7 +3395,83 @@ export class DAppClient extends Client {
     >
   ): void {
     logger.log('addOpenRequest', this.name, `adding request ${id} and waiting for answer`)
+    this.clearOpenRequestTimeout(id)
+    this.openRequests.delete(id)
     this.openRequests.set(id, promise)
+    this.addOpenRequestTimeout(id, promise)
+  }
+
+  private addOpenRequestTimeout(
+    id: string,
+    promise: ExposedPromise<
+      {
+        message: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>
+        connectionInfo: ConnectionContext
+      },
+      ErrorResponse
+    >
+  ): void {
+    if (id === SESSION_UPDATE_REQUEST_ID) {
+      return
+    }
+
+    if (!Number.isFinite(this.requestTimeoutMs) || this.requestTimeoutMs <= 0) {
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      if (this.openRequests.get(id) !== promise) {
+        return
+      }
+
+      const errorResponse: ErrorResponse = {
+        id,
+        type: BeaconMessageType.Error,
+        errorType: BeaconErrorType.PEER_UNREACHABLE,
+        senderId: '',
+        version: '2'
+      }
+
+      promise.reject(errorResponse)
+      this.clearOpenRequest(id)
+      this.events.emit(BeaconEvent.CHANNEL_CLOSED).catch((emitError) => {
+        logger.error('addOpenRequestTimeout', emitError)
+      })
+    }, this.requestTimeoutMs)
+
+    this.openRequestTimeouts.set(id, timeout)
+  }
+
+  private clearOpenRequest(id: string): void {
+    this.clearOpenRequestTimeout(id)
+    this.openRequests.delete(id)
+    this.openRequestsOtherTabs.delete(id)
+  }
+
+  private clearOpenRequestTimeout(id: string): void {
+    const timeout = this.openRequestTimeouts.get(id)
+    if (timeout) {
+      clearTimeout(timeout)
+      this.openRequestTimeouts.delete(id)
+    }
+  }
+
+  private clearAllOpenRequestTimeouts(): void {
+    this.openRequestTimeouts.forEach((timeout) => clearTimeout(timeout))
+    this.openRequestTimeouts.clear()
+  }
+
+  private abortOpenRequests(): void {
+    Array.from(this.openRequests.entries())
+      .filter(([id]) => id !== SESSION_UPDATE_REQUEST_ID)
+      .forEach(([id, promise]) => {
+        promise.reject(this.createAbortedError(id))
+        this.clearOpenRequest(id)
+      })
+    this.openRequests.clear()
+    this.openRequestsOtherTabs.clear()
+    this.acknowledgedRequests.clear()
+    this.clearAllOpenRequestTimeouts()
   }
 
   private async sendNotificationWithAccessToken(notification: {

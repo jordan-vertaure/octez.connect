@@ -19,15 +19,6 @@ export enum NetworkType {
 
 export const tezosExtensionList: ExtensionApp[] = [
   {
-    key: 'spire_chrome',
-    id: 'gpfndedineagiepkpinficbcbbgjoenn',
-    name: 'Spire',
-    shortName: 'Spire',
-    color: '',
-    logo: 'extension-spire.png',
-    link: 'https://spirewallet.com/'
-  },
-  {
     key: 'temple_chrome',
     id: 'ookjlbkiijinhpmnjffcofjonbfbgaoc',
     name: 'Temple Wallet Chrome',

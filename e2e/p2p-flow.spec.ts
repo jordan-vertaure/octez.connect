@@ -24,7 +24,7 @@ test('should load activeAccount on page reload', async () => {
   const activeAccount = await dapp.evaluate(() => {
     return window.localStorage.getItem('beacon:active-account')
   })
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 })
 
 test('should send a request to sign', async () => {
@@ -109,7 +109,7 @@ test('should disconnect on both tabs', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 })
 
 test('should clearActiveAccount on both tabs', async () => {
@@ -125,7 +125,7 @@ test('should clearActiveAccount on both tabs', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 })
 
 test('@extended should disconnect on tab1 and reconnect on tab2', async () => {
@@ -141,7 +141,7 @@ test('@extended should disconnect on tab1 and reconnect on tab2', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 
   await dapp2.click('#requestPermission')
   await dapp2.waitForSelector('div.alert-wrapper-show', { state: 'visible', timeout: 30_000 })
@@ -178,7 +178,7 @@ test('@extended should disconnect on tab1 and reconnect on tab2', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 
   // #sendToSelf
   await dapp.click('#sendToSelf')
@@ -204,7 +204,7 @@ test('@extended should disconnect on tab2 and reconnect on tab3', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).toBe('undefined')
+  expect(activeAccount).toBeNull()
 
   await dapp3.click('#requestPermission')
   await dapp3.waitForSelector('div.alert-wrapper-show', { state: 'visible', timeout: 30_000 })
@@ -244,7 +244,7 @@ test('@extended should disconnect on tab2 and reconnect on tab3', async () => {
     return window.localStorage.getItem('beacon:active-account')
   })
 
-  expect(activeAccount).not.toBe('undefined')
+  expect(activeAccount).not.toBe(null)
 
   // #sendToSelf
   await dapp2.click('#sendToSelf')

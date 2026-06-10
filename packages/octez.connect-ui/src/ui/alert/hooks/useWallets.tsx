@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PostMessageTransport } from '@tezos-x/octez.connect-transport-postmessage'
 import { arrangeTopWallets, mergeWallets, parseWallets } from '../../../utils/wallets'
 import { Extension, NetworkType } from '@tezos-x/octez.connect-types'
 import { desktopList, extensionList, iOSList, webList } from '../wallet-lists'
 import { windowRef } from '@tezos-x/octez.connect-core'
+import { getAvailableExtensions } from '../../../utils/extensions'
+
+const isExtensionsUpdatedMessage = (event: unknown): boolean =>
+  typeof event === 'object' &&
+  event !== null &&
+  'data' in event &&
+  event.data === 'extensionsUpdated'
 
 const useWallets = (networkType?: NetworkType, featuredWallets?: string[]) => {
   const [availableExtensions, setAvailableExtensions] = useState<Extension[]>([])
 
   // Fetch and listen for extension updates
   useEffect(() => {
-    PostMessageTransport.getAvailableExtensions().then(setAvailableExtensions)
+    getAvailableExtensions().then(setAvailableExtensions)
 
-    const handler = async (event: any) => {
-      if (event.data === 'extensionsUpdated') {
-        const extensions = await PostMessageTransport.getAvailableExtensions()
+    const handler = async (event: unknown) => {
+      if (isExtensionsUpdatedMessage(event)) {
+        const extensions = await getAvailableExtensions()
         setAvailableExtensions(extensions)
       }
     }
@@ -99,12 +105,21 @@ const useWallets = (networkType?: NetworkType, featuredWallets?: string[]) => {
 
     return arrangeTopWallets(
       mergeWallets(parseWallets(merged)),
-      featuredWallets ?? ['kukai', 'temple', 'plenty', 'umami']
+      featuredWallets ?? ['kukai', 'temple', 'umami']
     )
   }, [availableExtensions, networkType, featuredWallets])
 
-  // Memoize the final Map structure
-  const walletsMap = useMemo(() => new Map(wallets.map((wallet) => [wallet.id, wallet])), [wallets])
+  // Memoize the final Map structure.
+  // Guard against falsy / id-less entries: building a Map from a list that
+  // can contain `undefined` (or wallets without an id) throws
+  // "Iterator value undefined is not an entry object" (#30).
+  const walletsMap = useMemo(
+    () =>
+      new Map(
+        wallets.filter((wallet) => wallet && wallet.id).map((wallet) => [wallet.id, wallet])
+      ),
+    [wallets]
+  )
 
   return { wallets: walletsMap, availableExtensions }
 }
