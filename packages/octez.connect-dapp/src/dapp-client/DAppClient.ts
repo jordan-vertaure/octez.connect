@@ -154,21 +154,16 @@ const createLazyPromise = <T>(factory: () => Promise<T>): PromiseLike<T> => {
     return promise
   }
 
-  const lazyPromise = {
-    then<TResult1 = T, TResult2 = never>(
+  const lazyPromise: PromiseLike<T> & Pick<Promise<T>, 'catch' | 'finally'> = {
+    then: <TResult1 = T, TResult2 = never>(
       onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
-    ): Promise<TResult1 | TResult2> {
-      return getPromise().then(onfulfilled, onrejected)
-    },
-    catch<TResult = never>(
+    ): Promise<TResult1 | TResult2> => getPromise().then(onfulfilled, onrejected),
+    catch: <TResult = never>(
       onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
-    ): Promise<T | TResult> {
-      return getPromise().catch(onrejected)
-    },
-    finally(onfinally?: (() => void) | null): Promise<T> {
-      return getPromise().finally(onfinally ?? undefined)
-    }
+    ): Promise<T | TResult> => getPromise().catch(onrejected),
+    finally: (onfinally?: (() => void) | null): Promise<T> =>
+      getPromise().finally(onfinally ?? undefined)
   }
 
   return lazyPromise
@@ -1602,14 +1597,16 @@ export class DAppClient extends Client {
   // IndexedDB before the DB was ready, surfacing as unhandledRejection.
   // Hard-disabled here; full removal (option, storage key, IDB store,
   // BACKEND_URL constant, all call sites) tracked as a follow-up.
+  /* eslint-disable @typescript-eslint/no-unused-vars -- hard-disabled stub keeps its signature for call-site type-safety; params are intentionally unused pending full removal. */
   private sendMetrics(
     _uri: string,
     _options?: RequestInit,
     _thenHandler?: (res: Response) => void,
     _catchHandler?: (err: Error) => void
-  ) {
+  ): void {
     return
   }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   private async checkMakeRequest() {
     const isResolved = this._transport.isResolved()
@@ -1829,13 +1826,13 @@ export class DAppClient extends Client {
     const logId = `makeRequestV3 ${Date.now()}`
     logger.time(true, logId)
     let resolved: {
-      message: BeaconMessageWrapper<PermissionResponseV3<string>>
+      message: BeaconMessageWrapper<PermissionResponseV3>
       connectionInfo: ConnectionContext
     }
     try {
       resolved = await this.makeRequestV3<
-        PermissionRequestV3<string>,
-        BeaconMessageWrapper<PermissionResponseV3<string>>
+        PermissionRequestV3,
+        BeaconMessageWrapper<PermissionResponseV3>
       >(request)
     } catch (requestError) {
       await this.runRequestErrorSideEffects(request, requestError, logId)

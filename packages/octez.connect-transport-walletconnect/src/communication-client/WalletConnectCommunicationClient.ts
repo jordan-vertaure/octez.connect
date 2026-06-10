@@ -719,7 +719,7 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
           fun && fun('pending')
         }
       })
-      .catch(() => {})
+      .catch(() => undefined)
 
     approval()
       .then((session) => {
@@ -1012,24 +1012,24 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
   }
 
   private async createPairingRequestInfo(): Promise<ExtendedWalletConnectPairingRequest> {
-    let _uri = ''
-    let _topic = ''
+    let pairingUri = ''
+    let pairingTopic = ''
     try {
       logger.warn('getPairingRequestInfo')
       const { uri, topic } = (await this.init(true)) ?? { uri: '', topic: '' }
-      _uri = uri
-      _topic = topic
+      pairingUri = uri
+      pairingTopic = topic
     } catch (error: unknown) {
       logger.warn(error instanceof Error ? error.message : String(error))
     }
 
     return new ExtendedWalletConnectPairingRequest(
-      _topic,
+      pairingTopic,
       'WalletConnect',
       await generateGUID(),
       BEACON_VERSION,
       await generateGUID(),
-      _uri
+      pairingUri
     )
   }
 
@@ -1060,8 +1060,11 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
       ))
     if (closedSessions || pairings.length > 0 || this.isMobileOS()) {
       await this.closeSignClient()
-      this.isMobileOS() && (await this.storage.resetState())
-      this.isMobileOS() && this.storage.notify('RESET')
+
+      if (this.isMobileOS()) {
+        await this.storage.resetState()
+        this.storage.notify('RESET')
+      }
     }
   }
 
@@ -1073,12 +1076,13 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
     const signClient = (await this.getSignClient())!
 
     const sessions = signClient.session.getAll() ?? []
-    sessions.length &&
-      (await Promise.allSettled(
+
+    if (sessions.length) {
+      await Promise.allSettled(
         sessions.map((session) =>
           this.withTimeout(
             signClient.disconnect({
-              topic: (session as any).topic,
+              topic: session.topic,
               reason: {
                 code: 0, // TODO: Use constants
                 message: 'Force new connection'
@@ -1088,9 +1092,11 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
             'WalletConnect session disconnect timed out.'
           )
         )
-      ))
+      )
+    }
 
     this.clearState()
+
     return sessions.length > 0
   }
 
