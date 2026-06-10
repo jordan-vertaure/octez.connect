@@ -184,6 +184,51 @@ describe('DAppClient — basic unit tests', () => {
   })
 })
 
+describe('DAppClient — request timeout (#9785f5402)', () => {
+  beforeEach(() => jest.useFakeTimers())
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  const makeClient = (requestTimeoutMs?: number) =>
+    new DAppClient({
+      name: 'TestApp',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET,
+      requestTimeoutMs
+    })
+
+  it('rejects an open request with PEER_UNREACHABLE after the timeout and clears it', async () => {
+    const client = makeClient(1000)
+    const p = new ExposedPromise<any, any>()
+    ;(client as any).addOpenRequest('req-1', p)
+    expect((client as any).openRequests.has('req-1')).toBe(true)
+
+    jest.advanceTimersByTime(1000)
+
+    await expect(p.promise).rejects.toMatchObject({
+      errorType: BeaconErrorType.PEER_UNREACHABLE
+    })
+    expect((client as any).openRequests.has('req-1')).toBe(false)
+    expect((client as any).openRequestTimeouts.has('req-1')).toBe(false)
+  })
+
+  it('does not arm a timeout for the session_update sentinel request', () => {
+    const client = makeClient(1000)
+    const p = new ExposedPromise<any, any>()
+    ;(client as any).addOpenRequest('session_update', p)
+    expect((client as any).openRequestTimeouts.has('session_update')).toBe(false)
+  })
+
+  it('disables timeouts when requestTimeoutMs is 0 or negative', () => {
+    const client = makeClient(0)
+    const p = new ExposedPromise<any, any>()
+    ;(client as any).addOpenRequest('req-2', p)
+    expect((client as any).openRequestTimeouts.has('req-2')).toBe(false)
+  })
+})
+
 describe('DAppClient — abort handling', () => {
   let client: DAppClient
 

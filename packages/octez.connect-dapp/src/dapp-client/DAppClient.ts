@@ -141,6 +141,8 @@ import { DappWalletConnectTransport } from '../transports/DappWalletConnectTrans
 import { DAppClientOptions } from './DAppClientOptions'
 
 const logger = new Logger('DAppClient')
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
+const SESSION_UPDATE_REQUEST_ID = 'session_update'
 
 /**
  * @publicapi
@@ -200,6 +202,8 @@ export class DAppClient extends Client {
    * Port of ecadlabs/beacon-sdk-taquito-patches@d82807184.
    */
   private readonly acknowledgedRequests = new Set<string>()
+  private readonly openRequestTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly requestTimeoutMs: number
   /**
    * A map of requests that are currently "open", meaning we have sent them to a wallet and are still awaiting a response.
    */
@@ -300,6 +304,7 @@ export class DAppClient extends Client {
       config.enableAppSwitching === undefined ? true : Boolean(config.enableAppSwitching)
 
     this.enableMetrics = config.enableMetrics ? true : false
+    this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
 
     // Subscribe to storage changes and update the active account if it changes on other tabs
     this.storage.subscribeToStorageChanged(async (event) => {
@@ -422,8 +427,10 @@ export class DAppClient extends Client {
           id: message.id
         })
 
-        if (typedMessage.type !== BeaconMessageType.Acknowledge) {
-          this.openRequestsOtherTabs.delete(message.id)
+        if (typedMessage.type === BeaconMessageType.Acknowledge) {
+          this.clearOpenRequestTimeout(message.id)
+        } else {
+          this.clearOpenRequest(message.id)
         }
 
         return
@@ -471,6 +478,7 @@ export class DAppClient extends Client {
       if (openRequest && typedMessage.type === BeaconMessageType.Acknowledge) {
         if (!this.acknowledgedRequests.has(message.id)) {
           this.acknowledgedRequests.add(message.id)
+          this.clearOpenRequestTimeout(message.id)
           this.analytics.track('event', 'DAppClient', 'Acknowledge received from Wallet')
           logger.log('handleResponse', `acknowledge message received for ${message.id}`)
 
@@ -506,7 +514,7 @@ export class DAppClient extends Client {
           } else {
             openRequest.resolve({ message, connectionInfo })
           }
-          this.openRequests.delete(message.id)
+          this.clearOpenRequest(message.id)
           this.acknowledgedRequests.delete(message.id)
         } else {
           // Log unexpected message types but don't resolve the request
@@ -520,6 +528,12 @@ export class DAppClient extends Client {
           await handleDisconnect()
         } else if (typedMessage.type === BeaconMessageType.ChangeAccountRequest) {
           await this.onNewAccount(typedMessage as ChangeAccountRequest, connectionInfo)
+        } else {
+          logger.warn('handleResponse', 'received response for unknown or closed request', {
+            id: message.id,
+            type: typedMessage.type,
+            connectionInfo
+          })
         }
       }
 
@@ -528,9 +542,9 @@ export class DAppClient extends Client {
 
         if (
           transport instanceof WalletConnectTransport &&
-          !this.openRequests.has('session_update')
+          !this.openRequests.has(SESSION_UPDATE_REQUEST_ID)
         ) {
-          this.openRequests.set('session_update', new ExposedPromise())
+          this.openRequests.set(SESSION_UPDATE_REQUEST_ID, new ExposedPromise())
         }
       }
     }
@@ -657,9 +671,49 @@ export class DAppClient extends Client {
     await transport.waitForResolution()
 
     this.openRequestsOtherTabs.add(message.id)
-    isV3
+    const requestPromise = isV3
       ? this.makeRequestV3(message.data, message.id)
       : this.makeRequest(message.data, false, message.id)
+
+    requestPromise.catch((requestError) => {
+      const errorResponse = this.buildDelegatedRequestError(message.id, requestError)
+
+      this.multiTabChannel.postMessage({
+        type: 'RESPONSE',
+        data: {
+          message: errorResponse,
+          connectionInfo: {
+            origin: Origin.WALLETCONNECT,
+            id: ''
+          }
+        },
+        id: message.id
+      })
+      this.clearOpenRequest(message.id)
+    })
+  }
+
+  private buildDelegatedRequestError(id: string, error: unknown): ErrorResponse {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'type' in error &&
+      'errorType' in error &&
+      error.type === BeaconMessageType.Error
+    ) {
+      return {
+        ...(error as ErrorResponse),
+        id
+      }
+    }
+
+    return {
+      id,
+      type: BeaconMessageType.Error,
+      errorType: BeaconErrorType.UNKNOWN_ERROR,
+      senderId: '',
+      version: '2'
+    }
   }
 
   private async createStateSnapshot() {
@@ -1148,7 +1202,7 @@ export class DAppClient extends Client {
           })
         }
         Array.from(this.openRequests.entries())
-          .filter(([id, _promise]) => id !== 'session_update')
+          .filter(([id]) => id !== SESSION_UPDATE_REQUEST_ID)
           .forEach(([id, promise]) => {
             promise.reject({
               type: BeaconMessageType.Error,
@@ -1157,9 +1211,11 @@ export class DAppClient extends Client {
               senderId: '',
               version: '2'
             })
+            this.clearOpenRequest(id)
           })
         this.openRequests.clear()
         this.acknowledgedRequests.clear()
+        this.clearAllOpenRequestTimeouts()
         this.debounceSetActiveAccount = false
       }
     }
@@ -2628,28 +2684,48 @@ export class DAppClient extends Client {
       this.addOpenRequest(request.id, exposed)
     }
 
-    const account = await this.getActiveAccount()
-
-    const peer = await this.getPeer(account)
-
-    const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
-
-    const walletInfo = await this.getWalletInfo(peer, account)
-
     logger.log('makeRequest', 'sending message', request)
     try {
+      const account = await this.getActiveAccount()
+
+      const peer = await this.getPeer(account)
+
+      const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
+
+      const walletInfo = await this.getWalletInfo(peer, account)
+
       // Hook for performance measurement
       if ((window as any).__beaconPerf?.onBeforeSend) {
         (window as any).__beaconPerf.onBeforeSend()
       }
-      ;(await this.transport).send(payload, peer)
+      await (await this.transport).send(payload, peer)
       if (
         request.type !== BeaconMessageType.PermissionRequest ||
         (this._activeAccount.isResolved() && (await this._activeAccount.promise))
       ) {
         this.tryToAppSwitch()
       }
+
+      if (!otherTabMessageId) {
+        this.events
+          .emit(messageEvents[requestInput.type].sent, {
+            walletInfo: {
+              ...walletInfo,
+              name: walletInfo.name ?? 'Wallet'
+            },
+            extraInfo: {
+              resetCallback: async () => {
+                await this.disconnect()
+              }
+            }
+          })
+          .catch((emitError) => logger.warn('makeRequest', emitError))
+      }
     } catch (sendError) {
+      if (!skipResponse) {
+        this.clearOpenRequest(request.id)
+      }
+
       const error = new UnknownBeaconError()
       await this.emitEventWithErrorContext(
         BeaconEvent.INTERNAL_ERROR,
@@ -2669,22 +2745,6 @@ export class DAppClient extends Client {
         })
       )
       throw sendError
-    }
-
-    if (!otherTabMessageId) {
-      this.events
-        .emit(messageEvents[requestInput.type].sent, {
-          walletInfo: {
-            ...walletInfo,
-            name: walletInfo.name ?? 'Wallet'
-          },
-          extraInfo: {
-            resetCallback: async () => {
-              this.disconnect()
-            }
-          }
-        })
-        .catch((emitError) => console.warn(emitError))
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2758,28 +2818,46 @@ export class DAppClient extends Client {
 
     this.addOpenRequest(request.id, exposed)
 
-    const account = await this.getActiveAccount()
-
-    const peer = await this.getPeer(account)
-
-    const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
-
-    const walletInfo = await this.getWalletInfo(peer, account)
-
     logger.log('makeRequest', 'sending message', request)
     try {
+      const account = await this.getActiveAccount()
+
+      const peer = await this.getPeer(account)
+
+      const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
+
+      const walletInfo = await this.getWalletInfo(peer, account)
+
       // Hook for performance measurement
       if ((window as any).__beaconPerf?.onBeforeSend) {
         (window as any).__beaconPerf.onBeforeSend()
       }
-      ;(await this.transport).send(payload, peer)
+      await (await this.transport).send(payload, peer)
       if (
         request.message.type !== BeaconMessageType.PermissionRequest ||
         (this._activeAccount.isResolved() && (await this._activeAccount.promise))
       ) {
         this.tryToAppSwitch()
       }
+
+      const index = requestInput.type as any as BeaconMessageType
+
+      this.events
+        .emit(messageEvents[index].sent, {
+          walletInfo: {
+            ...walletInfo,
+            name: walletInfo.name ?? 'Wallet'
+          },
+          extraInfo: {
+            resetCallback: async () => {
+              await this.disconnect()
+            }
+          }
+        })
+        .catch((emitError) => logger.warn('makeRequestV3', emitError))
     } catch (sendError) {
+      this.clearOpenRequest(request.id)
+
       const error = new UnknownBeaconError()
       await this.emitEventWithErrorContext(
         BeaconEvent.INTERNAL_ERROR,
@@ -2800,22 +2878,6 @@ export class DAppClient extends Client {
       )
       throw sendError
     }
-
-    const index = requestInput.type as any as BeaconMessageType
-
-    this.events
-      .emit(messageEvents[index].sent, {
-        walletInfo: {
-          ...walletInfo,
-          name: walletInfo.name ?? 'Wallet'
-        },
-        extraInfo: {
-          resetCallback: async () => {
-            this.disconnect()
-          }
-        }
-      })
-      .catch((emitError) => console.warn(emitError))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return exposed.promise as any // TODO: fix type
@@ -2946,7 +3008,70 @@ export class DAppClient extends Client {
     >
   ): void {
     logger.log('addOpenRequest', this.name, `adding request ${id} and waiting for answer`)
+    this.clearOpenRequestTimeout(id)
+    this.openRequests.delete(id)
     this.openRequests.set(id, promise)
+    this.addOpenRequestTimeout(id, promise)
+  }
+
+  private addOpenRequestTimeout(
+    id: string,
+    promise: ExposedPromise<
+      {
+        message: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>
+        connectionInfo: ConnectionContext
+      },
+      ErrorResponse
+    >
+  ): void {
+    if (id === SESSION_UPDATE_REQUEST_ID) {
+      return
+    }
+
+    if (!Number.isFinite(this.requestTimeoutMs) || this.requestTimeoutMs <= 0) {
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      if (this.openRequests.get(id) !== promise) {
+        return
+      }
+
+      const errorResponse: ErrorResponse = {
+        id,
+        type: BeaconMessageType.Error,
+        errorType: BeaconErrorType.PEER_UNREACHABLE,
+        senderId: '',
+        version: '2'
+      }
+
+      promise.reject(errorResponse)
+      this.clearOpenRequest(id)
+      this.events.emit(BeaconEvent.CHANNEL_CLOSED).catch((emitError) => {
+        logger.error('addOpenRequestTimeout', emitError)
+      })
+    }, this.requestTimeoutMs)
+
+    this.openRequestTimeouts.set(id, timeout)
+  }
+
+  private clearOpenRequest(id: string): void {
+    this.clearOpenRequestTimeout(id)
+    this.openRequests.delete(id)
+    this.openRequestsOtherTabs.delete(id)
+  }
+
+  private clearOpenRequestTimeout(id: string): void {
+    const timeout = this.openRequestTimeouts.get(id)
+    if (timeout) {
+      clearTimeout(timeout)
+      this.openRequestTimeouts.delete(id)
+    }
+  }
+
+  private clearAllOpenRequestTimeouts(): void {
+    this.openRequestTimeouts.forEach((timeout) => clearTimeout(timeout))
+    this.openRequestTimeouts.clear()
   }
 
   private async sendNotificationWithAccessToken(notification: {

@@ -13,6 +13,7 @@ import { ParametersInvalidBeaconError } from './errors/ParametersInvalidBeaconEr
 import { TooManyOperationsBeaconError } from './errors/TooManyOperationsBeaconError'
 import { TransactionInvalidBeaconError } from './errors/TransactionInvalidBeaconError'
 import { UnknownBeaconError } from './errors/UnknownBeaconError'
+import { PeerUnreachableBeaconError } from './errors/PeerUnreachableBeaconError'
 import { Transport } from './transports/Transport'
 import { ChromeStorage } from './storage/ChromeStorage'
 import { LocalStorage } from './storage/LocalStorage'
@@ -76,6 +77,7 @@ export {
   TooManyOperationsBeaconError,
   TransactionInvalidBeaconError,
   SignatureTypeNotSupportedBeaconError,
+  PeerUnreachableBeaconError,
   // EncryptionTypeNotSupportedBeaconError,
   UnknownBeaconError
 }
