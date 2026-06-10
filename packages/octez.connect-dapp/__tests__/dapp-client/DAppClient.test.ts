@@ -239,14 +239,17 @@ describe('DAppClient — invalid account deactivation guard (#734703d92)', () =>
     // Isolate the idempotency guard from the storage/account-manager teardown.
     jest.spyOn(client as any, 'resetInvalidState').mockResolvedValue(undefined)
     let count = 0
-    await client.subscribeToEvent(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED, () => {
+    let lastReason: string | undefined
+    await client.subscribeToEvent(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED, (data) => {
       count++
+      lastReason = data?.reason
     })
 
     await (client as any).deactivateInvalidAccountState('missing_active_account')
     await (client as any).deactivateInvalidAccountState('invalid_active_account_storage')
 
     expect(count).toBe(1)
+    expect(lastReason).toBe('missing_active_account')
     expect((client as any).resetInvalidState).toHaveBeenCalledTimes(1)
     expect((client as any).hasEmittedInvalidAccountDeactivated).toBe(true)
   })
