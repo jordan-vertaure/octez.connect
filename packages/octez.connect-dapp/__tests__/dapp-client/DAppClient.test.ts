@@ -229,6 +229,29 @@ describe('DAppClient — request timeout (#9785f5402)', () => {
   })
 })
 
+describe('DAppClient — invalid account deactivation guard (#734703d92)', () => {
+  it('emits INVALID_ACCOUNT_DEACTIVATED at most once across repeated recovery calls', async () => {
+    const client = new DAppClient({
+      name: 'TestApp',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET
+    })
+    // Isolate the idempotency guard from the storage/account-manager teardown.
+    jest.spyOn(client as any, 'resetInvalidState').mockResolvedValue(undefined)
+    let count = 0
+    await client.subscribeToEvent(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED, () => {
+      count++
+    })
+
+    await (client as any).deactivateInvalidAccountState('missing_active_account')
+    await (client as any).deactivateInvalidAccountState('invalid_active_account_storage')
+
+    expect(count).toBe(1)
+    expect((client as any).resetInvalidState).toHaveBeenCalledTimes(1)
+    expect((client as any).hasEmittedInvalidAccountDeactivated).toBe(true)
+  })
+})
+
 describe('DAppClient — abort handling', () => {
   let client: DAppClient
 
