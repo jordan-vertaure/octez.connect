@@ -1222,7 +1222,7 @@ export class DAppClient extends Client {
               logger.error(err)
               await this.hideUI(['alert']) // hide pairing alert
               setTimeout(() => this.events.emit(BeaconEvent.GENERIC_ERROR, err.message), 1000)
-              abortHandler()
+              abortHandler().catch((abortErr) => logger.warn('init', 'abortHandler', abortErr))
               resolve('')
               return
             }
