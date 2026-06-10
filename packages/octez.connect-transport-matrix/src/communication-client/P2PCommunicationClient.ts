@@ -633,9 +633,11 @@ export class P2PCommunicationClient extends CommunicationClient {
           }
 
           logger.log(`sendMessage`, `inner error`, newRoomId, innerError)
+          throw innerError
         }
       } else {
         logger.log(`sendMessage`, `unexpected error`, error)
+        throw error
       }
     }
   }

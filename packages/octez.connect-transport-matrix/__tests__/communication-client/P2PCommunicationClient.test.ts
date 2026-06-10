@@ -85,6 +85,43 @@ describe('P2PCommunicationClient', () => {
       .mockResolvedValue({ server: 'relay.server', timestamp: 1234 })
   })
 
+  describe('sendMessage (failure propagation)', () => {
+    const peer = { publicKey: 'peerpub', relayServer: 'relay.server' } as any
+    let sendTextMessage: jest.Mock
+
+    beforeEach(() => {
+      sendTextMessage = jest.fn().mockResolvedValue(undefined)
+      ;(client as any).client = { promise: Promise.resolve({ sendTextMessage }) }
+      jest.spyOn(client as any, 'createCryptoBoxClient').mockResolvedValue({ send: 'shared' })
+      jest.spyOn(client as any, 'getRelevantRoom').mockResolvedValue('!room:id')
+      jest.spyOn(client as any, 'deleteRoomIdFromRooms').mockResolvedValue(undefined)
+    })
+
+    it('resolves when the underlying send succeeds', async () => {
+      await expect(client.sendMessage('msg', peer)).resolves.toBeUndefined()
+      expect(sendTextMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('rethrows non-cancel send failures to the caller', async () => {
+      sendTextMessage.mockRejectedValueOnce(new Error('network down'))
+      await expect(client.sendMessage('msg', peer)).rejects.toThrow('network down')
+    })
+
+    it('swallows ERR_CANCELED failures raised while the transport is stopping', async () => {
+      sendTextMessage.mockRejectedValueOnce({ code: 'ERR_CANCELED' })
+      await expect(client.sendMessage('msg', peer)).resolves.toBeUndefined()
+    })
+
+    it('recreates the room on M_FORBIDDEN and rethrows if the retry also fails', async () => {
+      sendTextMessage
+        .mockRejectedValueOnce({ errcode: 'M_FORBIDDEN' })
+        .mockRejectedValueOnce(new Error('retry failed'))
+      await expect(client.sendMessage('msg', peer)).rejects.toThrow('retry failed')
+      expect((client as any).deleteRoomIdFromRooms).toHaveBeenCalled()
+      expect(sendTextMessage).toHaveBeenCalledTimes(2)
+    })
+  })
+
   describe('getPairingRequestInfo', () => {
     it('builds a P2PPairingRequest with id, name, publicKey, version & relayServer', async () => {
       const req = await client.getPairingRequestInfo()
