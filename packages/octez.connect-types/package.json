@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-types",
-  "version": "4.8.4",
+  "version": "4.8.5",
   "description": "Shared types used across the octez.connect SDK packages.",
   "author": "Trilitech",
   "license": "ISC",
