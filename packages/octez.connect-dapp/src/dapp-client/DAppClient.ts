@@ -344,6 +344,7 @@ export class DAppClient extends Client {
       // throw an unhandled rejection inside the transport subscription callback.
       if (usesWrappedMessages(message.version) && !typedMessage) {
         logger.log('handleResponse', 'Received wrapped message with undefined payload; dropping', message)
+
         return
       }
 
