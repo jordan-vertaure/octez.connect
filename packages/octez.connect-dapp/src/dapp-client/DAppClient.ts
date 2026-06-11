@@ -339,6 +339,14 @@ export class DAppClient extends Client {
         ? (message as BeaconMessageWrapper<BeaconBaseMessage>).message
         : (message as BeaconMessage)
 
+      // Issue #33: a V3-versioned message can arrive without its wrapped payload.
+      // Drop it safely instead of dereferencing an undefined payload, which would
+      // throw an unhandled rejection inside the transport subscription callback.
+      if (usesWrappedMessages(message.version) && !typedMessage) {
+        logger.log('handleResponse', 'Received wrapped message with undefined payload; dropping', message)
+        return
+      }
+
       let appMetadata: AppMetadata | undefined = usesWrappedMessages(message.version)
         ? (typedMessage as unknown as PermissionResponseV3<string>).blockchainData?.appMetadata
         : (typedMessage as PermissionResponse).appMetadata

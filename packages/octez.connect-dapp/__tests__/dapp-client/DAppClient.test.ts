@@ -285,3 +285,27 @@ describe('DAppClient — WalletConnect opt-in (#32)', () => {
     expect((client as any).wcRelayUrl).toBe('wss://relay.example')
   })
 })
+
+describe('DAppClient — V3 message without payload (#33)', () => {
+  it('drops a wrapped (V3) message with an undefined payload instead of throwing', async () => {
+    const client = new DAppClient({
+      name: 'V3App',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET
+    })
+
+    // A V3-versioned message that arrived without its wrapped `message` payload.
+    // Before the guard this dereferenced `undefined.blockchainData` and threw an
+    // unhandled rejection inside the transport subscription callback.
+    const malformed = {
+      version: '3',
+      id: 'req-1',
+      senderId: 'sender-1',
+      type: BeaconMessageType.Acknowledge
+    } as any
+
+    await expect(
+      (client as any).handleResponse(malformed, { origin: 'p2p', id: 'conn-1' })
+    ).resolves.toBeUndefined()
+  })
+})
