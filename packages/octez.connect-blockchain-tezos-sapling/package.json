@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-blockchain-tezos-sapling",
-  "version": "4.8.4",
+  "version": "4.8.5",
   "description": "Tezos Sapling support package for the octez.connect SDK.",
   "author": "Trilitech",
   "license": "ISC",
@@ -33,7 +33,7 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-types": "4.8.4",
-    "@tezos-x/octez.connect-ui": "4.8.4"
+    "@tezos-x/octez.connect-types": "4.8.5",
+    "@tezos-x/octez.connect-ui": "4.8.5"
   }
 }
