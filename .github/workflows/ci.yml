@@ -118,10 +118,12 @@ jobs:
         run: ./scripts/npm11.sh run webpack:sdk:ext
 
       - name: Install Firefox
-        uses: browser-actions/setup-firefox@v1
+        uses: browser-actions/setup-firefox@latest
 
       - name: Install geckodriver
-        uses: browser-actions/setup-geckodriver@v1
+        uses: browser-actions/setup-geckodriver@latest
+        with:
+          token: ${{ github.token }}
 
       - name: Run real-Firefox content-script harness (#32, headless via xvfb)
         run: xvfb-run -a ./scripts/npm11.sh run e2e:firefox-ext
