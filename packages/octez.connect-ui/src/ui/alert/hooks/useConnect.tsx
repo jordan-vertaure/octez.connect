@@ -5,10 +5,26 @@ import { getTzip10Link } from '../../../utils/get-tzip10-link'
 import { isTwBrowser, isAndroid, isMobileOS, isIOS } from '../../../utils/platform'
 import { MergedWallet, OSLink } from '../../../utils/wallets'
 import getDefaultLogo from '../getDefautlLogo'
-import { parseUri } from '@walletconnect/utils'
+import { hasWalletConnectSymKey } from '../../../utils/walletconnect'
 import { AlertConfig, AlertState } from '../../common'
 
 const logger = new Logger('useConnect')
+
+// #32: a peer-info promise created in a Firefox MV3 content script can cross an
+// Xray compartment boundary that strips its resolved value's string methods (or
+// drops the value entirely). Coerce the awaited result to a plain string so the
+// connection action (URI/QR) still renders instead of crashing later string ops.
+// Applied at each await site (not eagerly) to preserve the lazy WalletConnect
+// pairing-request behavior.
+const asSyncCode = async (payload: Promise<string>): Promise<string> => {
+  try {
+    const value = await payload
+    return typeof value === 'string' ? value : ''
+  } catch (error) {
+    logger.warn('asSyncCode', 'peer-info promise rejected or returned a non-string', error)
+    return ''
+  }
+}
 
 const useConnect = (
   isMobile: boolean,
@@ -65,7 +81,7 @@ const useConnect = (
       selectedWallet &&
       selectedWallet.supportedInteractionStandards?.includes('wallet_connect')
     ) {
-      const isValid = !!parseUri(await wcPayload).symKey
+      const isValid = hasWalletConnectSymKey(await asSyncCode(wcPayload))
       setIsWCWorking(isValid)
 
       if (!isValid && selectedWallet?.name.toLowerCase().includes('kukai')) {
@@ -79,7 +95,7 @@ const useConnect = (
         if (isMobile && selectedWallet.types.includes('ios') && selectedWallet.types.length === 1) {
           handleDeepLinking(selectedWallet)
         } else {
-          setQRCode(await wcPayload)
+          setQRCode(await asSyncCode(wcPayload))
           setInstallState(selectedWallet)
         }
       }
@@ -99,7 +115,7 @@ const useConnect = (
             : isAndroid(window)
               ? selectedWallet.links[OSLink.IOS]
               : 'tezos://',
-          await p2pPayload
+          await asSyncCode(p2pPayload)
         )
 
         updateSelectedWalletWithURL(link)
@@ -119,7 +135,7 @@ const useConnect = (
       }
     } else {
       setInstallState(selectedWallet)
-      config.pairingPayload && setQRCode(await p2pPayload)
+      config.pairingPayload && setQRCode(await asSyncCode(p2pPayload))
       setIsLoading(false)
     }
   }
@@ -159,16 +175,16 @@ const useConnect = (
       wallet.supportedInteractionStandards?.includes('wallet_connect') &&
       !wallet.name.toLowerCase().includes('kukai')
     ) {
-      const isValid = !!parseUri(await wcPayload).symKey
+      const isValid = hasWalletConnectSymKey(await asSyncCode(wcPayload))
       setIsWCWorking(isValid)
 
       if (!isValid) {
         return
       }
 
-      link = `${wallet.links[OSLink.WEB]}/wc?uri=${encodeURIComponent(await wcPayload)}`
+      link = `${wallet.links[OSLink.WEB]}/wc?uri=${encodeURIComponent(await asSyncCode(wcPayload))}`
     } else {
-      link = getTzip10Link(wallet.links[OSLink.WEB], await p2pPayload)
+      link = getTzip10Link(wallet.links[OSLink.WEB], await asSyncCode(p2pPayload))
     }
 
     if (newTab) {
@@ -198,9 +214,9 @@ const useConnect = (
       })
     )
 
-    const syncCode = await (wallet?.supportedInteractionStandards?.includes('wallet_connect')
-      ? wcPayload
-      : p2pPayload)
+    const syncCode = await asSyncCode(
+      wallet?.supportedInteractionStandards?.includes('wallet_connect') ? wcPayload : p2pPayload
+    )
 
     if (!wallet?.links[OSLink.IOS]?.length) {
       if (!syncCode.length) {
@@ -254,7 +270,7 @@ const useConnect = (
     setShowMoreContent(false)
     const message: ExtensionMessage<string> = {
       target: ExtensionMessageTarget.EXTENSION,
-      payload: await postPayload,
+      payload: await asSyncCode(postPayload),
       targetId: wallet?.id
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -263,7 +279,7 @@ const useConnect = (
     if (wallet?.firefoxId) {
       const message: ExtensionMessage<string> = {
         target: ExtensionMessageTarget.EXTENSION,
-        payload: await postPayload,
+        payload: await asSyncCode(postPayload),
         targetId: wallet?.firefoxId
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -290,7 +306,7 @@ const useConnect = (
     setShowMoreContent(false)
 
     if (p2pPayload) {
-      const link = getTzip10Link(wallet?.deepLink || '', await p2pPayload)
+      const link = getTzip10Link(wallet?.deepLink || '', await asSyncCode(p2pPayload))
       window.open(link, '_blank', 'noopener')
     }
 

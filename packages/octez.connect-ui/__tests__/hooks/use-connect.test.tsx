@@ -394,12 +394,14 @@ describe('useConnect hook', () => {
       image: 'https://wcwallet.com/icon.png'
     }
     wallets.set('wallet-wc-valid', wcWallet)
-    mockParseUri.mockReturnValue({ symKey: 'abc' })
+    // #32: WC validity is now decided by hasWalletConnectSymKey (a real wc: URI),
+    // not a parseUri mock — supply a URI that actually carries a symKey.
+    const validWcUri = 'wc:topic@2?symKey=abc&relay-protocol=irn'
 
     const { result } = renderHook(() =>
       useConnect(
         false,
-        Promise.resolve('wc-payload'),
+        Promise.resolve(validWcUri),
         Promise.resolve('p2p-payload'),
         Promise.resolve('post-payload'),
         wallets,
@@ -419,7 +421,7 @@ describe('useConnect hook', () => {
       })
     })
 
-    expect(result.current[2]).toBe('wc-payload')
+    expect(result.current[2]).toBe(validWcUri)
     expect(result.current[3]).toBe('install')
     expect(result.current[1]).toBe(false)
   })
