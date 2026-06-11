@@ -245,3 +245,43 @@ describe('DAppClient — abort handling', () => {
     expect(pairAbortedHandler).toHaveBeenCalled()
   })
 })
+
+describe('DAppClient — WalletConnect opt-in (#32)', () => {
+  const make = (config: any) =>
+    new DAppClient({
+      name: 'WCOptInApp',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET,
+      ...config
+    })
+
+  it('does not enable WC or apply a default projectId when no walletConnectOptions are given', () => {
+    const client = make({})
+    expect((client as any).isWalletConnectEnabled).toBe(false)
+    expect((client as any).wcProjectId).toBeUndefined()
+    expect((client as any).wcRelayUrl).toBeUndefined()
+  })
+
+  it('does not enable WC when disableWalletConnect is true, even with walletConnectOptions', () => {
+    const client = make({
+      walletConnectOptions: { projectId: 'abc123' },
+      disableWalletConnect: true
+    })
+    expect((client as any).isWalletConnectEnabled).toBe(false)
+    // No default projectId is applied when WC is disabled.
+    expect((client as any).wcProjectId).toBeUndefined()
+  })
+
+  it('enables WC and resolves a projectId when walletConnectOptions are provided', () => {
+    const client = make({ walletConnectOptions: { projectId: 'abc123' } })
+    expect((client as any).isWalletConnectEnabled).toBe(true)
+    expect((client as any).wcProjectId).toBe('abc123')
+  })
+
+  it('falls back to the default projectId when walletConnectOptions omit it (relayUrl only)', () => {
+    const client = make({ walletConnectOptions: { relayUrl: 'wss://relay.example' } })
+    expect((client as any).isWalletConnectEnabled).toBe(true)
+    expect(typeof (client as any).wcProjectId).toBe('string')
+    expect((client as any).wcRelayUrl).toBe('wss://relay.example')
+  })
+})
