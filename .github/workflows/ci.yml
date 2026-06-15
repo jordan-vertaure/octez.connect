@@ -86,3 +86,44 @@ jobs:
 
       - name: Run end-to-end tests
         run: ./scripts/npm11.sh run e2e:smoke
+
+  firefox-extension-e2e:
+    name: firefox-extension-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Non-blocking (#32): the real-Firefox content-script harness exercises the
+    # genuine Xray compartment via Selenium + geckodriver. It is the only layer
+    # that reproduces the membrane bug, but it is environment-sensitive; the
+    # deterministic Jest compartment tests are the CI-blocking guard.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify npm 11 runner
+        run: ./scripts/npm11.sh --version
+
+      - name: Install dependencies
+        run: ./scripts/npm11.sh ci --include=optional
+
+      - name: Build packages
+        run: ./scripts/npm11.sh run build
+
+      - name: Build eval-free SDK bundle (MV3 forbids eval)
+        run: ./scripts/npm11.sh run webpack:sdk:ext
+
+      - name: Install Firefox
+        uses: browser-actions/setup-firefox@latest
+
+      - name: Install geckodriver
+        uses: browser-actions/setup-geckodriver@latest
+        with:
+          token: ${{ github.token }}
+
+      - name: Run real-Firefox content-script harness (#32, headless via xvfb)
+        run: xvfb-run -a ./scripts/npm11.sh run e2e:firefox-ext

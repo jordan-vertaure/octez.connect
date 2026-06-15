@@ -286,6 +286,18 @@ export class P2PCommunicationClient extends CommunicationClient {
           })
           return { server: node, timestamp: info.timestamp }
         } catch (error) {
+          // #12: a transient offline state shouldn't cost the user their pairing.
+          // Only drop the stored node when the device is actually online; if it
+          // reports offline, retain the node and skip rediscovery this cycle so
+          // the same node can be retried once connectivity returns. `navigator`
+          // being undefined (Node/SSR) is treated as online — existing behavior.
+          if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            logger.log(
+              'getRelayServer',
+              `stored node ${node} is unreachable but device is offline; retaining node and skipping discovery`
+            )
+            throw error
+          }
           logger.log(
             'getRelayServer',
             `stored node ${node} is unreachable, falling through to discovery`
