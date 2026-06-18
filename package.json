@@ -1,7 +1,7 @@
 {
   "name": "octez.connect-workspace",
   "private": true,
-  "version": "4.8.5",
+  "version": "4.8.6",
   "description": "Workspace for the Trilitech-maintained octez.connect packages.",
   "workspaces": [
     "packages/*"
@@ -71,9 +71,9 @@
     "@tezos-x/octez.connect-ui": "file:packages/octez.connect-ui",
     "@tezos-x/octez.connect-utils": "file:packages/octez.connect-utils",
     "@tezos-x/octez.connect-wallet": "file:packages/octez.connect-wallet",
-    "@walletconnect/sign-client": "^2.23.9",
-    "@walletconnect/types": "^2.23.9",
-    "@walletconnect/utils": "^2.23.9",
+    "@walletconnect/sign-client": "2.18.0",
+    "@walletconnect/types": "2.18.0",
+    "@walletconnect/utils": "2.18.0",
     "@web3modal/standalone": "2.4.3",
     "rollup": "4.60.2",
     "stream-browserify": "^3.0.0"

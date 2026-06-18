@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-transport-walletconnect",
-  "version": "4.8.5",
+  "version": "4.8.6",
   "description": "WalletConnect transport for octez.connect communication.",
   "author": "Trilitech",
   "license": "ISC",
@@ -34,15 +34,16 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "4.8.5",
-    "@tezos-x/octez.connect-types": "4.8.5",
-    "@tezos-x/octez.connect-utils": "4.8.5",
-    "@walletconnect/sign-client": "^2.23.9",
-    "@walletconnect/types": "^2.23.9",
-    "@walletconnect/utils": "^2.23.9"
+    "@tezos-x/octez.connect-core": "4.8.6",
+    "@tezos-x/octez.connect-types": "4.8.6",
+    "@tezos-x/octez.connect-utils": "4.8.6",
+    "@walletconnect/sign-client": "2.18.0",
+    "@walletconnect/types": "2.18.0",
+    "@walletconnect/utils": "2.18.0"
   },
   "devDependencies": {
     "@rollup/plugin-terser": "1.0.0",
+    "@types/elliptic": "^6.4.18",
     "mocha": "11.7.5",
     "rollup": "4.60.2",
     "sinon": "21.1.2",
