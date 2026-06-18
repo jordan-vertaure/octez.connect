@@ -30,7 +30,12 @@ export default [
       typescript({
         tsconfig: 'tsconfig.json',
         tsconfigOverride: {
-          include: ['src/**/*'],
+          // resolveJsonModule must be set explicitly here, and src/**/*.json
+          // must be listed in include — rpt2's `include` override REPLACES
+          // (not extends) the parent's, and rpt2 needs JSON files explicitly
+          // listed when resolveJsonModule is in effect.
+          compilerOptions: { resolveJsonModule: true },
+          include: ['src/**/*', 'src/**/*.json'],
           exclude: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts']
         }
       }),
@@ -74,7 +79,12 @@ export default [
       typescript({
         tsconfig: 'tsconfig.json',
         tsconfigOverride: {
-          include: ['src/**/*'],
+          // resolveJsonModule must be set explicitly here, and src/**/*.json
+          // must be listed in include — rpt2's `include` override REPLACES
+          // (not extends) the parent's, and rpt2 needs JSON files explicitly
+          // listed when resolveJsonModule is in effect.
+          compilerOptions: { resolveJsonModule: true },
+          include: ['src/**/*', 'src/**/*.json'],
           exclude: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts']
         }
       }),
