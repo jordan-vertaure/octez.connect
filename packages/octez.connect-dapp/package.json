@@ -42,7 +42,7 @@
     "@tezos-x/octez.connect-types": "4.8.5",
     "@tezos-x/octez.connect-ui": "4.8.5",
     "@tezos-x/octez.connect-utils": "4.8.5",
-    "@walletconnect/types": "^2.23.9",
+    "@walletconnect/types": "2.18.0",
     "broadcast-channel": "^7.3.0",
     "bs58check": "4.0.0"
   }
