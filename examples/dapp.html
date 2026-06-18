@@ -54,6 +54,18 @@
     <br /><br />
     <button id="requestPermissionAndSign">Request Permission And Sign Request</button>
     <br /><br />
+    <!-- Multi-network (v4) end-to-end exercise -->
+    <hr />
+    <button id="requestMultiNetworkPermission">Request Multi-Network Permission</button>
+    <br /><br />
+    <span>Accounts:</span>
+    <div id="accounts"></div>
+    <br />
+    <input id="operationNetwork" value="tezos:NetXnHfVqm9iesp9" />
+    <button id="requestOperationMultiNetwork">Request Operation On Network</button>
+    <div id="operationResult"></div>
+    <hr />
+    <br /><br />
     <button id="disconnect" disabled style="opacity: 0.5">Disconnect</button>
     <br /><br />
     <button id="reset">Reset and Refresh</button>
@@ -244,6 +256,10 @@
         // matrixNodes: ['beacon.tztip.me']
       })
 
+      // Register the Tezos blockchain handler so v4 multi-network permission
+      // responses can be parsed (one AccountInfo per network in the fanout).
+      client.addBlockchain(new beacon.TezosBlockchain())
+
       // Display the active account in the UI
       const updateActiveAccount = () => {
         client.getActiveAccount().then((activeAccount) => {
@@ -351,6 +367,78 @@
             console.log(`The contract call failed and the following error was returned:`, error)
           }
         })
+      }
+
+      // --- Multi-network (v4) exercise -------------------------------------
+      // Two distinct Tezos networks (CAIP-2 chain ids) the dApp asks for.
+      const MULTI_NETWORK_L1 = 'tezos:NetXdQprcVkpaWU7' // mainnet
+      const MULTI_NETWORK_L2 = 'tezos:NetXnHfVqm9iesp9' // ghostnet
+
+      // Render every persisted account (one per network on the v4 path) so the
+      // e2e test can assert N accounts keyed by their chain ids.
+      const renderAccounts = () => {
+        return client.getAccounts().then((accounts) => {
+          const container = document.getElementById('accounts')
+          container.innerHTML = ''
+          accounts.forEach((acc) => {
+            const row = document.createElement('div')
+            row.className = 'account-row'
+            row.setAttribute('data-chainid', acc.network && acc.network.chainId ? acc.network.chainId : '')
+            row.setAttribute('data-address', acc.address)
+            row.innerText = `${acc.address} @ ${acc.network && acc.network.chainId ? acc.network.chainId : acc.network.type}`
+            container.appendChild(row)
+          })
+          return accounts
+        })
+      }
+
+      // Ask an upgraded (v4) wallet for permissions across multiple networks.
+      const requestMultiNetworkPermission = () => {
+        return client
+          .requestPermissions({
+            networks: [{ chainId: MULTI_NETWORK_L1 }, { chainId: MULTI_NETWORK_L2 }]
+          })
+          .then((permissions) => {
+            console.log('multi-network permissions', permissions)
+            updateActiveAccount()
+            return renderAccounts()
+          })
+          .catch((error) => {
+            console.log('error during multi-network permission request', error)
+            document.getElementById('operationResult').innerText = 'permission error: ' + (error && error.message)
+          })
+      }
+
+      // Send an operation targeting a specific network (CAIP-2 string). Switch
+      // the active account to the one on that network first, so sourceAddress
+      // and network agree (the dApp gates requestOperation on its own stored
+      // permission for that (address, network)).
+      const requestOperationMultiNetwork = async () => {
+        const network = document.getElementById('operationNetwork').value
+        try {
+          const accounts = await client.getAccounts()
+          const match = accounts.find((a) => a.network && a.network.chainId === network)
+          if (match) {
+            await client.setActiveAccount(match)
+          }
+          const activeAccount = match || (await client.getActiveAccount())
+          const result = await client.requestOperation({
+            network,
+            operationDetails: [
+              {
+                kind: beacon.TezosOperationType.TRANSACTION,
+                destination: activeAccount?.address ?? '',
+                amount: '1'
+              }
+            ]
+          })
+          console.log('operation result', result)
+          document.getElementById('operationResult').innerText = 'operation ok on ' + network
+        } catch (error) {
+          console.log('operation error', error)
+          document.getElementById('operationResult').innerText =
+            'operation error: ' + (error && (error.message || error.errorType))
+        }
       }
 
       // Initiate a permission request
@@ -463,6 +551,14 @@
       // Add event listener to the button
       document.getElementById('requestPermission').addEventListener('click', () => {
         requestPermission()
+      })
+
+      // Multi-network (v4) listeners
+      document.getElementById('requestMultiNetworkPermission').addEventListener('click', () => {
+        requestMultiNetworkPermission()
+      })
+      document.getElementById('requestOperationMultiNetwork').addEventListener('click', () => {
+        requestOperationMultiNetwork()
       })
 
       // Add event listener to the button

@@ -33,6 +33,7 @@
     octez.connect Example Wallet
     <br /><br />
     <div id="status"></div>
+    <span>Last operation network: <span id="lastOpNetwork"></span></span>
     <br /><br />
     <button id="paste">Paste Sync Code</button>
     <br /><br />
@@ -155,13 +156,46 @@
                 // }
               }
 
+              // v4 multi-network: when the dApp requested specific networks,
+              // return an `accounts` fanout keyed by CAIP-2 chain id (one
+              // account per requested network). Legacy single-network requests
+              // (no `networks`) keep the flat single-account response above.
+              if (Array.isArray(message.networks) && message.networks.length > 0) {
+                const addresses = [
+                  'tz1RAf7CZDoa5Z94RdE2VMwfrRWeyiNAXTrw',
+                  'tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb'
+                ]
+                response.accounts = {}
+                message.networks.forEach((n, i) => {
+                  response.accounts[n.chainId] = {
+                    publicKey,
+                    address: addresses[i % addresses.length]
+                  }
+                })
+              }
+
               // Let's wait a little to make it more natural (to test the UI on the dApp side)
               await new Promise((resolve) => setTimeout(resolve, 1000))
 
               // Send response back to DApp
               client.respond(response)
+            } else if (message.type === beacon.BeaconMessageType.OperationRequest) {
+              // Echo the network we received so the dApp-side e2e can assert the
+              // CAIP-2 target travelled across the wire, then return a fake
+              // success so the dApp's requestOperation resolves.
+              document.getElementById('lastOpNetwork').innerText =
+                typeof message.network === 'string'
+                  ? message.network
+                  : JSON.stringify(message.network)
+
+              const response = {
+                type: beacon.BeaconMessageType.OperationResponse,
+                id: message.id,
+                transactionHash: 'ooMultiNetworkE2eFakeOperationHash000000000000000000'
+              }
+              client.respond(response)
             } else {
-              console.error('Only permission requests are supported in this demo')
+              console.error('Unsupported request type in this demo')
               console.error('Received: ', message)
 
               const response = {
