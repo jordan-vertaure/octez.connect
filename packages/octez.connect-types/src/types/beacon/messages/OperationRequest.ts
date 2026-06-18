@@ -8,7 +8,12 @@ import { PartialTezosOperation } from '../../tezos/PartialTezosOperation'
  */
 export interface OperationRequest extends BeaconBaseMessage {
   type: BeaconMessageType.OperationRequest
-  network: Network // Network on which the operation will be broadcast
+  /**
+   * Network on which the operation will be broadcast. Legacy path: a Network
+   * object. Multi-network path: a CAIP-2 chain id string. Wallet handlers
+   * discriminate via `typeof`.
+   */
+  network: Network | string
   operationDetails: PartialTezosOperation[] // Partial TezosOperation that may lack certain information like counter and fee. Those will be added by the wallet.
   sourceAddress: string
 }

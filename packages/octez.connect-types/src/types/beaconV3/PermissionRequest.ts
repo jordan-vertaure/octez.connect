@@ -28,8 +28,18 @@ export interface Blockchain {
     iOSList: App[]
   }>
 
+  /**
+   * Parse the wallet's permission response into one or more account records.
+   * Implementations branch on `peerVersion` to pick between the multi-network
+   * fanout (v4: CAIP-2-keyed `blockchainData.accounts` → N records) and the
+   * legacy shape (single record from `blockchainData.publicKey`/`.address`).
+   * Field-presence detection of v4 fields as a routing key is forbidden.
+   *
+   * @param peerVersion decimal-integer peer.version sourced from PeerManager.
+   */
   getAccountInfosFromPermissionResponse(
-    permissionResponse: PermissionResponseV3
+    permissionResponse: PermissionResponseV3,
+    peerVersion: string
   ): Promise<{
     accountId: string;
     address: string;
