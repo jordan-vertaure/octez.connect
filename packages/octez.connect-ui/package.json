@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-ui",
-  "version": "4.8.5",
+  "version": "4.8.6",
   "description": "UI components and assets for octez.connect alerts and toasts.",
   "author": "Trilitech",
   "license": "ISC",
@@ -34,8 +34,8 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "4.8.5",
-    "@tezos-x/octez.connect-types": "4.8.5",
+    "@tezos-x/octez.connect-core": "4.8.6",
+    "@tezos-x/octez.connect-types": "4.8.6",
     "@walletconnect/sign-client": "2.18.0",
     "qrcode": "^1.5.3",
     "react": "^19.2.5",
