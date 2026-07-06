@@ -2573,6 +2573,7 @@ export class DAppClient extends Client {
   // store, so callers should avoid it on paths that can decide without it.
   private async getSessionChainIds(): Promise<string[]> {
     const allAccounts = await this.accountManager.getAccounts()
+
     return Array.from(
       new Set(
         allAccounts
@@ -2603,15 +2604,15 @@ export class DAppClient extends Client {
       if (inputNetwork === activeAccount.network?.chainId) {
         return inputNetwork
       }
-      const sessionChainIds = await this.getSessionChainIds()
+      const knownChainIds = await this.getSessionChainIds()
       // Tolerate pre-multi-network sessions with no recorded chain ids: such a
       // wallet (v2/v3) expects a Network object, not a bare CAIP-2 string it
       // cannot interpret, so return the active account's Network rather than the
       // string. (There is exactly one network in a session with no chain ids.)
-      if (sessionChainIds.length === 0) {
+      if (knownChainIds.length === 0) {
         return activeAccount.network || this.network
       }
-      if (!sessionChainIds.includes(inputNetwork)) {
+      if (!knownChainIds.includes(inputNetwork)) {
         throw new NetworksUnsupportedBeaconError({
           requestedNetworks: [inputNetwork],
           unsupportedNetworks: [inputNetwork]
@@ -3229,7 +3230,7 @@ export class DAppClient extends Client {
           ...(message.verificationType === 'proof_of_event'
             ? { hasVerifiedChallenge: false }
             : {})
-        } as AccountInfo
+        }
       })
     )
   }

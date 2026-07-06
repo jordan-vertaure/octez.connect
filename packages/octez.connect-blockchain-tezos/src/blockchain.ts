@@ -103,6 +103,7 @@ export class TezosBlockchain implements Blockchain {
             `Dropping account under malformed CAIP-2 chain id "${chainId}"`
           )
         }
+
         return ok
       })
 
