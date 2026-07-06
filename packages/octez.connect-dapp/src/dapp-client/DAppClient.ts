@@ -3220,7 +3220,10 @@ export class DAppClient extends Client {
           walletKey,
           address,
           publicKey: p.publicKey || undefined,
-          network: p.network,
+          // The v4 fanout parser always sets a Network (networkFromTezosCaip2);
+          // the `?? this.network` fallback keeps the type `Network` (required by
+          // AccountInfo) without an `as AccountInfo` assertion.
+          network: p.network ?? this.network,
           scopes: message.scopes,
           threshold: message.threshold,
           notification: message.notification,
