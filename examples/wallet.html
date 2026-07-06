@@ -179,14 +179,17 @@
 
               // Send response back to DApp
               client.respond(response)
-            } else if (message.type === beacon.BeaconMessageType.OperationRequest) {
-              // Echo the network we received so the dApp-side e2e can assert the
-              // CAIP-2 target travelled across the wire, then return a fake
-              // success so the dApp's requestOperation resolves.
-              document.getElementById('lastOpNetwork').innerText =
-                typeof message.network === 'string'
-                  ? message.network
-                  : JSON.stringify(message.network)
+            } else if (
+              message.type === beacon.BeaconMessageType.OperationRequest &&
+              typeof message.network === 'string'
+            ) {
+              // v4 multi-network demo path only: the operation targets a specific
+              // network via a CAIP-2 string. Echo it so the dApp-side e2e can assert
+              // the target travelled across the wire, then return a fake success so
+              // requestOperation resolves. Classic single-network operations (where
+              // `network` is a Network object) intentionally fall through to the
+              // abort below, preserving the pre-v4 behavior the p2p-flow e2e expects.
+              document.getElementById('lastOpNetwork').innerText = message.network
 
               const response = {
                 type: beacon.BeaconMessageType.OperationResponse,
