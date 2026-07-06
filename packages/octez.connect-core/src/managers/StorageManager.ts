@@ -66,6 +66,42 @@ export class StorageManager<
     return this.storage.set(this.storageKey, entities)
   }
 
+  /**
+   * Insert or update many elements in a single read-modify-write cycle.
+   *
+   * Equivalent to calling {@link addOne} for each element, but reads and writes
+   * storage once instead of once per element. Elements are reconciled against
+   * the store AND against earlier elements in the same batch (so a duplicate
+   * within `elements` collapses to one), using `match(stored, incoming)` to
+   * decide identity. Used for the v4 multi-network fanout, which persists one
+   * account per requested network from a single permission response.
+   */
+  public async addMany(
+    elements: ArrayElem<StorageKeyReturnType[T]>[],
+    match: (
+      stored: ArrayElem<StorageKeyReturnType[T]>,
+      incoming: ArrayElem<StorageKeyReturnType[T]>
+    ) => boolean,
+    overwrite: boolean = true
+  ): Promise<void> {
+    if (elements.length === 0) {
+      return
+    }
+
+    const entities = await this.storage.get(this.storageKey)
+
+    for (const element of elements) {
+      const index = fixArrayType(entities).findIndex((existing) => match(existing, element))
+      if (index === -1) {
+        fixArrayType(entities).push(element)
+      } else if (overwrite) {
+        entities[index] = element
+      }
+    }
+
+    return this.storage.set(this.storageKey, entities)
+  }
+
   public async remove(
     predicate: (element: ArrayElem<StorageKeyReturnType[T]>) => boolean
   ): Promise<void> {

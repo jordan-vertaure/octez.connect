@@ -6,7 +6,7 @@ import {
   PermissionEntity
 } from '@tezos-x/octez.connect-types'
 import { getAccountIdentifier } from '../utils/get-account-identifier'
-import { networkFromTezosCaip2 } from '../utils/caip2'
+import { networkFromTezosCaip2, normalizeTezosCaip2 } from '../utils/caip2'
 
 /**
  * @internalapi
@@ -35,10 +35,14 @@ export class PermissionValidator {
         // operation_request.network is now `Network | string`: on the v4 path
         // the wire carries a CAIP-2 string, which we coerce to the minimal
         // Network used to derive the account identifier (same helper the
-        // permission-storage side uses, so the two ids match).
+        // permission-storage side uses, so the two ids match). Normalize first:
+        // the wire accepts both the bare reference (`NetX…`) and the full
+        // `tezos:NetX…` form, but permissions were stored under the normalized
+        // (prefixed) chainId, so a bare reference must be prefixed before the
+        // identifier is derived or the lookup misses a valid grant.
         const networkForId: Network =
           typeof message.network === 'string'
-            ? networkFromTezosCaip2(message.network)
+            ? networkFromTezosCaip2(normalizeTezosCaip2(message.network))
             : message.network
         const accountIdentifier: string = await getAccountIdentifier(
           message.sourceAddress,

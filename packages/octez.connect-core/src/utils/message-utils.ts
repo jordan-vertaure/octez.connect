@@ -10,7 +10,7 @@ export const MULTI_NETWORK_FROM_VERSION = '4'
 // kept valid so legacy compat paths can use it as a fallback/unknown version.
 const DECIMAL_INTEGER_RE = /^(0|[1-9]\d*)$/
 
-const parseStrictDecimalInteger = (value: unknown): number | null => {
+export const parseStrictDecimalInteger = (value: unknown): number | null => {
   if (typeof value !== 'string') {
     return null
   }
@@ -80,11 +80,11 @@ export const isMultiNetworkVersion = (version: string | undefined): boolean =>
   isAtLeastVersion(version, MULTI_NETWORK_FROM_VERSION)
 
 export const usesWrappedMessages = (version?: string): boolean => {
-  if (!version) {
-    return false
-  }
+  // Use the same strict decimal-integer contract as compareBeaconVersion so
+  // wrapped-message routing agrees with the v4/multi-network routing: a loose
+  // value like '3.0', ' 3 ' or '03' (which Number() would accept) is treated
+  // as malformed and routed as non-wrapped rather than inconsistently.
+  const parsed = parseStrictDecimalInteger(version)
 
-  const parsed = Number(version)
-
-  return Number.isFinite(parsed) && parsed >= MESSAGE_WRAPPED_FROM_VERSION
+  return parsed !== null && parsed >= MESSAGE_WRAPPED_FROM_VERSION
 }

@@ -875,6 +875,19 @@ export class DAppClient extends Client {
             resolve(await super.init(this.p2pTransport))
           } else if (origin === Origin.WALLETCONNECT && this.walletConnectTransport) {
             resolve(await super.init(this.walletConnectTransport))
+          } else {
+            // The persisted active account was paired over WalletConnect but WC
+            // is now opt-out/disabled (#32), so there is no matching transport to
+            // restore. Without this branch none of the conditions above call
+            // resolve() and the init promise created above never settles, so
+            // init() (and every later call awaiting it) hangs forever. Resolve on
+            // the always-available P2P transport so the SDK stays usable and the
+            // stale WC account can be re-paired.
+            logger.warn(
+              'init',
+              'Active account was paired over WalletConnect but WC is disabled; falling back to the P2P transport'
+            )
+            resolve(await super.init(this.p2pTransport))
           }
         } else {
           const p2pTransport = this.p2pTransport
@@ -1138,9 +1151,20 @@ export class DAppClient extends Client {
         await this.setTransport(this.postMessageTransport)
       } else if (origin === Origin.P2P) {
         await this.setTransport(this.p2pTransport)
-      } else if (origin === Origin.WALLETCONNECT) {
+      } else if (origin === Origin.WALLETCONNECT && this.walletConnectTransport) {
         await this.setTransport(this.walletConnectTransport)
-        this.walletConnectTransport?.forceUpdate('INIT')
+        this.walletConnectTransport.forceUpdate('INIT')
+      } else if (origin === Origin.WALLETCONNECT) {
+        // WalletConnect is opt-out/disabled (#32) but this persisted account was
+        // paired over WC. There is no WC transport to bind; setting the transport
+        // to `undefined` would leave the client unable to send any request. Fall
+        // back to the always-available P2P transport so the SDK stays usable
+        // (the stale WC account can be re-paired).
+        logger.warn(
+          'setActiveAccount',
+          'Active account was paired over WalletConnect but WC is disabled; falling back to the P2P transport'
+        )
+        await this.setTransport(this.p2pTransport)
       }
       if (this._transport.isResolved()) {
         const transport = await this.transport
@@ -1541,9 +1565,7 @@ export class DAppClient extends Client {
         } as unknown as AccountInfo)
     )
 
-    for (const ai of accountInfos) {
-      await this.accountManager.addAccount(ai)
-    }
+    await this.accountManager.addAccounts(accountInfos)
     const accountInfo: AccountInfo | undefined = accountInfos[0]
     if (!accountInfo) {
       throw new Error(
@@ -1739,9 +1761,7 @@ export class DAppClient extends Client {
         walletPeerVersion ?? '0',
         connectionInfo
       )
-      for (const ai of builtAccounts) {
-        await this.accountManager.addAccount(ai)
-      }
+      await this.accountManager.addAccounts(builtAccounts)
       accountInfo = builtAccounts[0]
       if (!accountInfo) {
         throw new Error(
@@ -2299,7 +2319,7 @@ export class DAppClient extends Client {
           if (operationRequest.sourceAddress && operationRequest.network) {
             const networkForId: Network =
               typeof operationRequest.network === 'string'
-                ? networkFromTezosCaip2(operationRequest.network)
+                ? networkFromTezosCaip2(normalizeTezosCaip2(operationRequest.network))
                 : operationRequest.network
             const accountIdentifier = await getAccountIdentifier(
               operationRequest.sourceAddress,
@@ -2584,9 +2604,14 @@ export class DAppClient extends Client {
         return inputNetwork
       }
       const sessionChainIds = await this.getSessionChainIds()
-      // Tolerate pre-multi-network sessions with no recorded chain ids: fall
-      // through to the legacy path below.
-      if (sessionChainIds.length > 0 && !sessionChainIds.includes(inputNetwork)) {
+      // Tolerate pre-multi-network sessions with no recorded chain ids: such a
+      // wallet (v2/v3) expects a Network object, not a bare CAIP-2 string it
+      // cannot interpret, so return the active account's Network rather than the
+      // string. (There is exactly one network in a session with no chain ids.)
+      if (sessionChainIds.length === 0) {
+        return activeAccount.network || this.network
+      }
+      if (!sessionChainIds.includes(inputNetwork)) {
         throw new NetworksUnsupportedBeaconError({
           requestedNetworks: [inputNetwork],
           unsupportedNetworks: [inputNetwork]

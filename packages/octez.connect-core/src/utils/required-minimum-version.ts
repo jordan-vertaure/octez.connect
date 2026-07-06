@@ -1,6 +1,6 @@
 import { BEACON_VERSION } from '../constants'
 import { InvalidRequiredMinimumVersionError } from '../errors/InvalidRequiredMinimumVersionError'
-import { compareBeaconVersion } from './message-utils'
+import { compareBeaconVersion, parseStrictDecimalInteger } from './message-utils'
 
 /**
  * Default minimum wallet version the dApp accepts when the option is omitted.
@@ -11,10 +11,6 @@ import { compareBeaconVersion } from './message-utils'
  * multi-network protocol sets `requiredMinimumVersion: '4'` explicitly.
  */
 export const DEFAULT_REQUIRED_MINIMUM_VERSION = '2'
-
-// Same strict decimal-integer contract as compareBeaconVersion: a lone `0`
-// or a non-zero leading digit, no leading zeros, no signs/decimals/exponents.
-const DECIMAL_INTEGER_RE = /^(0|[1-9]\d*)$/
 
 /**
  * Resolve a dApp's `requiredMinimumVersion` option against the SDK's
@@ -33,10 +29,12 @@ export const resolveRequiredMinimumVersion = (
   }
 
   // Validate against the SAME strict contract compareBeaconVersion enforces,
-  // up front, so every rejection here is an InvalidRequiredMinimumVersionError.
-  // (A looser `/^\d+$/` would let leading-zero or > MAX_SAFE_INTEGER values
-  // slip through and throw the wrong error type from compareBeaconVersion below.)
-  if (!DECIMAL_INTEGER_RE.test(providedValue) || Number(providedValue) > Number.MAX_SAFE_INTEGER) {
+  // up front, so every rejection here is an InvalidRequiredMinimumVersionError
+  // rather than a leaked InvalidBeaconVersionError from the comparison below.
+  // Reuse parseStrictDecimalInteger (the single owner of that contract) instead
+  // of re-declaring the regex + MAX_SAFE_INTEGER bound here.
+  const parsed = parseStrictDecimalInteger(providedValue)
+  if (parsed === null) {
     throw new InvalidRequiredMinimumVersionError(
       providedValue,
       BEACON_VERSION,
@@ -44,7 +42,7 @@ export const resolveRequiredMinimumVersion = (
     )
   }
 
-  if (Number(providedValue) < 1) {
+  if (parsed < 1) {
     throw new InvalidRequiredMinimumVersionError(
       providedValue,
       BEACON_VERSION,

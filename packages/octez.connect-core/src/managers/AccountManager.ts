@@ -29,6 +29,19 @@ export class AccountManager {
     )
   }
 
+  /**
+   * Persist several accounts in a single read-modify-write cycle. Behaves like
+   * calling {@link addAccount} for each entry (dedupe/overwrite by
+   * `accountIdentifier`) but touches storage once. Used by the v4 multi-network
+   * permission flow, which materialises one account per requested network.
+   */
+  public async addAccounts(accountInfos: AccountInfo[]): Promise<void> {
+    return this.storageManager.addMany(
+      accountInfos,
+      (stored, incoming) => stored.accountIdentifier === incoming.accountIdentifier
+    )
+  }
+
   public async updateAccount(
     accountIdentifier: string,
     accountInfo: Partial<AccountInfo>
