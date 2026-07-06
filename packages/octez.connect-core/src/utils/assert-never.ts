@@ -1,12 +1,29 @@
 /* eslint-disable prefer-arrow/prefer-arrow-functions */
 
 /**
- * A helper function to make sure if/elses and switch/cases are exhaustive
+ * Exhaustiveness guard for if/else chains and switch/cases.
  *
- * @param empty The data that has to be empty
+ * Compile time: passing anything but `never` is a type error, so adding a new
+ * union member without handling it fails to build. Runtime: an untrusted value
+ * (e.g. an unknown message or error type from the wire) can still reach the
+ * default branch, so throw an actionable error naming that value instead of
+ * silently returning — callers previously received `undefined` and failed
+ * later with no context.
+ *
+ * @param empty The value that should be unreachable
  */
 export function assertNever(empty: never): never {
-  return empty
+  let repr: string
+  try {
+    repr = JSON.stringify(empty) ?? String(empty)
+  } catch {
+    repr = String(empty)
+  }
+  if (repr.length > 200) {
+    repr = `${repr.slice(0, 200)}…`
+  }
+
+  throw new Error(`assertNever: reached unreachable case with unexpected value: ${repr}`)
 }
 
 /* eslint-enable prefer-arrow/prefer-arrow-functions */

@@ -4,7 +4,8 @@ import {
   getAccountIdentifier,
   Logger,
   PermissionManager,
-  usesWrappedMessages
+  usesWrappedMessages,
+  assertNever
 } from '@tezos-x/octez.connect-core'
 import {
   ErrorResponse,
@@ -332,8 +333,4 @@ export class OutgoingResponseInterceptor {
         assertNever(message)
     }
   }
-}
-
-function assertNever(_message: never) {
-  throw new Error('Function not implemented.')
 }

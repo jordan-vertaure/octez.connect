@@ -19,7 +19,8 @@ import {
   AppMetadataManager,
   Logger,
   usesWrappedMessages,
-  isMultiNetworkVersion
+  isMultiNetworkVersion,
+  assertNever
 } from '@tezos-x/octez.connect-core'
 import { SimulatedProofOfEventChallengeRequestOutput } from '@tezos-x/octez.connect-types/dist/esm/types/beacon/messages/BeaconRequestOutputMessage'
 
@@ -267,7 +268,4 @@ export class IncomingRequestInterceptor {
   }
 }
 
-function assertNever(_message: never) {
-  throw new Error('Function not implemented.')
-}
 
