@@ -11,7 +11,7 @@ import { RequestPermissionNetwork } from '../../RequestPermissionInput'
 export interface PermissionRequest extends BeaconBaseMessage {
   type: BeaconMessageType.PermissionRequest
   appMetadata: AppMetadata // Some additional information about the DApp
-  network: Network // Network on which the permissions are requested. Only one network can be specified. In case you need permissions on multiple networks, you need to request permissions multiple times
+  network: Network // Default network on which the permissions are requested. To request permissions on multiple networks in a single call, use the `networks` field below (v4+ wallets); legacy wallets only honor this single network per request.
 
   /**
    * Optional multi-network permission request. When non-empty, an upgraded

@@ -119,6 +119,9 @@ export abstract class Client extends BeaconClient {
    */
   public addBlockchain(chain: Blockchain) {
     this.blockchains.set(chain.identifier, chain)
+    for (const legacyIdentifier of chain.legacyIdentifiers ?? []) {
+      this.blockchains.set(legacyIdentifier, chain)
+    }
   }
 
   /**
@@ -126,7 +129,11 @@ export abstract class Client extends BeaconClient {
    * @param chainIdentifier The identifier of the blockchain to remove
    */
   public removeBlockchain(chainIdentifier: string) {
+    const chain = this.blockchains.get(chainIdentifier)
     this.blockchains.delete(chainIdentifier)
+    for (const legacyIdentifier of chain?.legacyIdentifiers ?? []) {
+      this.blockchains.delete(legacyIdentifier)
+    }
   }
 
   /**

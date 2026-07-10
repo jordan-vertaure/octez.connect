@@ -44,6 +44,9 @@ export class TezosBlockchain implements Blockchain {
   // keyed on the wire identifier (the wallet's OutgoingResponseInterceptor
   // and the dApp's v4 fanout parser both go through `blockchains.get`).
   public readonly identifier: string = 'tezos'
+  // The registry also resolves the pre-rename ticker key, so peers and
+  // integrations still addressing the handler as 'xtz' keep working.
+  public readonly legacyIdentifiers: readonly string[] = ['xtz']
   async validateRequest(input: BlockchainMessage): Promise<void> {
     // TODO: Validation
     if (input) {

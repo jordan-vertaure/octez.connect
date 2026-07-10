@@ -18,6 +18,13 @@ export interface ResponseInput {
 
 export interface Blockchain {
   readonly identifier: string
+  /**
+   * Identifiers this blockchain was previously registered/addressed under.
+   * The client registers the handler under these keys too, so wire messages
+   * and registry lookups from integrations built against an older identifier
+   * (e.g. Tezos' former 'xtz') keep resolving.
+   */
+  readonly legacyIdentifiers?: readonly string[]
   validateRequest(input: BlockchainMessage): Promise<void>
   handleResponse(input: ResponseInput): Promise<void>
 

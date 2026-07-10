@@ -1534,11 +1534,11 @@ export class DAppClient extends Client {
 
     logger.log('RESPONSE V3', response, connectionInfo)
 
+    // The version stamp lives on the wrapper envelope, not the inner payload;
+    // reading response.message.version would always miss and collapse to '0',
+    // misrouting v4 responses when no peer is persisted yet.
     const walletPeerV3 = await this.getPeer()
-    const walletPeerVersionV3: string =
-      walletPeerV3?.version ??
-      (response.message as { version?: string }).version ??
-      '0'
+    const walletPeerVersionV3: string = walletPeerV3?.version ?? response.version
     const partialAccountInfos = await blockchain.getAccountInfosFromPermissionResponse(
       response.message,
       walletPeerVersionV3
@@ -1683,10 +1683,16 @@ export class DAppClient extends Client {
           : [PermissionScope.OPERATION_REQUEST, PermissionScope.SIGN]
     }
 
-    // Dedupe by chainId so duplicate input entries do not duplicate on the wire.
+    // Dedupe by the normalized CAIP-2 chainId so equivalent input entries
+    // ('NetX…' and 'tezos:NetX…') collapse to one canonical wire entry.
     if (input?.networks && input.networks.length > 0) {
       const dedupedNetworks = Array.from(
-        new Map(input.networks.map((n: RequestPermissionNetwork) => [n.chainId, n])).values()
+        new Map(
+          input.networks.map((n: RequestPermissionNetwork) => {
+            const chainId = normalizeTezosCaip2(n.chainId)
+            return [chainId, { ...n, chainId }]
+          })
+        ).values()
       )
       request.networks = dedupedNetworks
     }
