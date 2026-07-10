@@ -1690,6 +1690,7 @@ export class DAppClient extends Client {
         new Map(
           input.networks.map((n: RequestPermissionNetwork) => {
             const chainId = normalizeTezosCaip2(n.chainId)
+
             return [chainId, { ...n, chainId }]
           })
         ).values()

@@ -287,18 +287,23 @@ export abstract class Client extends BeaconClient {
     const id = await generateGUID()
     const senderId = await getSenderId(await this.beaconId)
 
+    // Peers with an unknown version (WalletConnect pairings) get the legacy
+    // '2' stamp: with no negotiated version there is no basis for the wrapped
+    // (v3+) envelope, and every wallet accepts the legacy shape.
+    const peerVersion = peer.version ?? '2'
+
     const disconnectMessage: DisconnectMessage = {
       id,
-      version: peer.version,
+      version: peerVersion,
       senderId,
       type: BeaconMessageType.Disconnect
     }
 
     const request =
-      usesWrappedMessages(peer.version)
+      usesWrappedMessages(peerVersion)
         ? {
             id,
-            version: peer.version,
+            version: peerVersion,
             senderId,
             message: {
               type: disconnectMessage.type

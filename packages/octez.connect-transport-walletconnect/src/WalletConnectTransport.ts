@@ -10,7 +10,7 @@ import {
   NetworkType,
   TransportType
 } from '@tezos-x/octez.connect-types'
-import { Transport, PeerManager, BEACON_VERSION } from '@tezos-x/octez.connect-core'
+import { Transport, PeerManager } from '@tezos-x/octez.connect-core'
 import { SignClientTypes } from '@walletconnect/types'
 import { ExposedPromise, KeyPair } from '@tezos-x/octez.connect-utils'
 
@@ -123,14 +123,17 @@ export class WalletConnectTransport<
     const protocolVersion = Number(rawProtocolVersion)
     const resolvedProtocolVersion = Number.isFinite(protocolVersion) ? protocolVersion : undefined
 
+    // No `version` here: WC cannot know the wallet's beacon protocol version,
+    // and fabricating one (this used to say BEACON_VERSION) silently defeated
+    // the dApp's requiredMinimumVersion gate and misrouted legacy WC wallets
+    // down the v4 multi-network path. Unknown fails safe to the legacy path.
     const basePeer: any = {
       senderId: session.peer.publicKey,
       extensionId: session.peer.metadata.name,
       id: session.peer.publicKey,
       type: 'walletconnect-pairing-response',
       name: session.peer.metadata.name,
-      publicKey: session.peer.publicKey,
-      version: BEACON_VERSION
+      publicKey: session.peer.publicKey
     }
 
     if (resolvedProtocolVersion !== undefined) {

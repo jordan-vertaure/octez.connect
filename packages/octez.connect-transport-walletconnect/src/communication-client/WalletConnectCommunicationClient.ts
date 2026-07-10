@@ -726,12 +726,15 @@ export class WalletConnectCommunicationClient extends CommunicationClient {
           ? remoteProtocolVersion
           : undefined
 
+        // WC has no beacon-level version handshake, so the peer version is
+        // unknown — do not fabricate one. Version gates treat undefined as
+        // allowed-through and version-gated routing stays on the legacy path.
         const pairingResponse: ExtendedWalletConnectPairingResponse =
           new ExtendedWalletConnectPairingResponse(
             session.topic,
             session.peer.metadata.name,
             session.peer.publicKey,
-            '3',
+            undefined,
             session.topic,
             session.peer.metadata.name,
             resolvedProtocolVersion
