@@ -1,9 +1,11 @@
 import {
   AppMetadataManager,
+  BEACON_VERSION,
   getAccountIdentifier,
   Logger,
   PermissionManager,
-  usesWrappedMessages
+  usesWrappedMessages,
+  assertNever
 } from '@tezos-x/octez.connect-core'
 import {
   ErrorResponse,
@@ -113,7 +115,12 @@ export class OutgoingResponseInterceptor {
             throw new Error('AppMetadata not found')
           }
 
-          const accountInfos = await blockchain.getAccountInfosFromPermissionResponse(response.message)
+          // This wallet just served the response, so the routing key for the
+          // parser is its own BEACON_VERSION.
+          const accountInfos = await blockchain.getAccountInfosFromPermissionResponse(
+            response.message,
+            BEACON_VERSION
+          )
           for (const accountInfo of accountInfos) {
             const permission: PermissionInfo = {
               accountIdentifier: accountInfo.accountId,
@@ -326,7 +333,4 @@ export class OutgoingResponseInterceptor {
         assertNever(message)
     }
   }
-}
-function assertNever(_message: never) {
-  throw new Error('Function not implemented.')
 }

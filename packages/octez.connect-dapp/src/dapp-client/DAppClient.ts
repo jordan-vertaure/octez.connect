@@ -17,6 +17,8 @@ import {
   ErrorResponse,
   BeaconMessage,
   RequestPermissionInput,
+  RequestPermissionNetwork,
+  PermissionResponseAccounts,
   RequestSignPayloadInput,
   RequestOperationInput,
   RequestBroadcastInput,
@@ -96,7 +98,16 @@ import {
   usesWrappedMessages,
   buildErrorContext,
   UnknownBeaconError,
-  AbortedBeaconError
+  AbortedBeaconError,
+  BEACON_VERSION,
+  compareBeaconVersion,
+  isMultiNetworkVersion,
+  VersionUnsupportedBeaconError,
+  NetworksUnsupportedBeaconError,
+  normalizeTezosCaip2,
+  isValidTezosCaip2,
+  networkFromTezosCaip2,
+  resolveRequiredMinimumVersion
 } from '@tezos-x/octez.connect-core'
 import {
   getAddressFromPublicKey,
@@ -141,6 +152,10 @@ import {
 import { WalletConnectTransport } from '@tezos-x/octez.connect-transport-walletconnect'
 
 const logger = new Logger('DAppClient')
+
+// Surfaced when a permission response yields zero account records.
+const EMPTY_PERMISSION_ACCOUNTS_MESSAGE =
+  'Wallet permission response did not include any accounts. Please re-pair the wallet and try again.'
 
 /**
  * @publicapi
@@ -235,6 +250,8 @@ export class DAppClient extends Client {
 
   private readonly featuredWallets: string[] | undefined
 
+  public readonly requiredMinimumVersion: string
+
   private readonly storageValidator: StorageValidator
 
   private readonly beaconIDB = new IndexedDBStorage('beacon', ['bug_report', 'metrics'])
@@ -281,6 +298,8 @@ export class DAppClient extends Client {
       config.enableAppSwitching === undefined ? true : !!config.enableAppSwitching
 
     this.enableMetrics = config.enableMetrics ? true : false
+
+    this.requiredMinimumVersion = resolveRequiredMinimumVersion(config.requiredMinimumVersion)
 
     // Subscribe to storage changes and update the active account if it changes on other tabs
     this.storage.subscribeToStorageChanged(async (event) => {
@@ -856,6 +875,19 @@ export class DAppClient extends Client {
             resolve(await super.init(this.p2pTransport))
           } else if (origin === Origin.WALLETCONNECT && this.walletConnectTransport) {
             resolve(await super.init(this.walletConnectTransport))
+          } else {
+            // The persisted active account was paired over WalletConnect but WC
+            // is now opt-out/disabled (#32), so there is no matching transport to
+            // restore. Without this branch none of the conditions above call
+            // resolve() and the init promise created above never settles, so
+            // init() (and every later call awaiting it) hangs forever. Resolve on
+            // the always-available P2P transport so the SDK stays usable and the
+            // stale WC account can be re-paired.
+            logger.warn(
+              'init',
+              'Active account was paired over WalletConnect but WC is disabled; falling back to the P2P transport'
+            )
+            resolve(await super.init(this.p2pTransport))
           }
         } else {
           const p2pTransport = this.p2pTransport
@@ -1119,9 +1151,20 @@ export class DAppClient extends Client {
         await this.setTransport(this.postMessageTransport)
       } else if (origin === Origin.P2P) {
         await this.setTransport(this.p2pTransport)
-      } else if (origin === Origin.WALLETCONNECT) {
+      } else if (origin === Origin.WALLETCONNECT && this.walletConnectTransport) {
         await this.setTransport(this.walletConnectTransport)
-        this.walletConnectTransport?.forceUpdate('INIT')
+        this.walletConnectTransport.forceUpdate('INIT')
+      } else if (origin === Origin.WALLETCONNECT) {
+        // WalletConnect is opt-out/disabled (#32) but this persisted account was
+        // paired over WC. There is no WC transport to bind; setting the transport
+        // to `undefined` would leave the client unable to send any request. Fall
+        // back to the always-available P2P transport so the SDK stays usable
+        // (the stale WC account can be re-paired).
+        logger.warn(
+          'setActiveAccount',
+          'Active account was paired over WalletConnect but WC is disabled; falling back to the P2P transport'
+        )
+        await this.setTransport(this.p2pTransport)
       }
       if (this._transport.isResolved()) {
         const transport = await this.transport
@@ -1491,25 +1534,44 @@ export class DAppClient extends Client {
 
     logger.log('RESPONSE V3', response, connectionInfo)
 
+    // The version stamp lives on the wrapper envelope, not the inner payload;
+    // reading response.message.version would always miss and collapse to '0',
+    // misrouting v4 responses when no peer is persisted yet.
+    const walletPeerV3 = await this.getPeer()
+    const walletPeerVersionV3: string = walletPeerV3?.version ?? response.version
     const partialAccountInfos = await blockchain.getAccountInfosFromPermissionResponse(
-      response.message
+      response.message,
+      walletPeerVersionV3
     )
 
-    const accountInfo: any = {
-      accountIdentifier: partialAccountInfos[0].accountId,
-      senderId: response.senderId,
-      origin: {
-        type: connectionInfo.origin,
-        id: connectionInfo.id
-      },
-      address: partialAccountInfos[0].address, // Store all addresses
-      publicKey: partialAccountInfos[0].publicKey,
-      scopes: response.message.blockchainData.scopes as any,
-      connectedAt: new Date().getTime(),
-      chainData: response.message.blockchainData
-    }
+    const blockchainDataScopes = (
+      response.message.blockchainData as { scopes?: PermissionScope[] }
+    ).scopes
+    const accountInfos: AccountInfo[] = partialAccountInfos.map(
+      (p) =>
+        ({
+          accountIdentifier: p.accountId,
+          senderId: response.senderId,
+          origin: {
+            type: connectionInfo.origin,
+            id: connectionInfo.id
+          },
+          address: p.address,
+          publicKey: p.publicKey,
+          network: p.network,
+          scopes: blockchainDataScopes ?? p.scopes,
+          connectedAt: new Date().getTime(),
+          chainData: response.message.blockchainData
+        } as unknown as AccountInfo)
+    )
 
-    await this.accountManager.addAccount(accountInfo)
+    await this.accountManager.addAccounts(accountInfos)
+    const accountInfo: AccountInfo | undefined = accountInfos[0]
+    if (!accountInfo) {
+      throw new Error(
+        EMPTY_PERMISSION_ACCOUNTS_MESSAGE
+      )
+    }
     await this.setActiveAccount(accountInfo)
 
     await blockchain.handleResponse({
@@ -1524,7 +1586,7 @@ export class DAppClient extends Client {
     await this.notifySuccess(request as any, {
       account: accountInfo,
       output: {
-        address: partialAccountInfos[0].address,
+        address: accountInfo.address,
         network: { type: 'substrate' },
         scopes: []
       } as any,
@@ -1621,6 +1683,21 @@ export class DAppClient extends Client {
           : [PermissionScope.OPERATION_REQUEST, PermissionScope.SIGN]
     }
 
+    // Dedupe by the normalized CAIP-2 chainId so equivalent input entries
+    // ('NetX…' and 'tezos:NetX…') collapse to one canonical wire entry.
+    if (input?.networks && input.networks.length > 0) {
+      const dedupedNetworks = Array.from(
+        new Map(
+          input.networks.map((n: RequestPermissionNetwork) => {
+            const chainId = normalizeTezosCaip2(n.chainId)
+
+            return [chainId, { ...n, chainId }]
+          })
+        ).values()
+      )
+      request.networks = dedupedNetworks
+    }
+
     this.analytics.track('event', 'DAppClient', 'Permission requested')
 
     this.sendMetrics('performance-metrics/save', await this.buildPayload('connect', 'start'))
@@ -1640,12 +1717,77 @@ export class DAppClient extends Client {
     logger.log('requestPermissions', '######## MESSAGE #######')
     logger.log('requestPermissions', message)
 
-    const accountInfo = await this.onNewAccount(message, connectionInfo)
+    // walletPeer.version is the negotiated pairing version; fall back to the
+    // response envelope version when no peer is persisted yet.
+    const walletPeer = await this.getPeer()
+    const walletPeerVersion = walletPeer?.version ?? message.version
 
-    logger.log('requestPermissions', '######## ACCOUNT INFO #######')
-    logger.log('requestPermissions', JSON.stringify(accountInfo))
+    // Gate the freshly-paired wallet against the dApp's required minimum (a
+    // no-op under the default, permissive minimum). Throws
+    // VersionUnsupportedBeaconError when the wallet is too old.
+    this.assertWalletVersionMeetsMinimum(walletPeerVersion)
 
-    await this.accountManager.addAccount(accountInfo)
+    const isV4Session = isMultiNetworkVersion(walletPeerVersion)
+
+    const messageAccounts = (message as { accounts?: PermissionResponseAccounts }).accounts
+    const multiNetworkAccounts: PermissionResponseAccounts | null =
+      isV4Session &&
+      messageAccounts &&
+      typeof messageAccounts === 'object' &&
+      !Array.isArray(messageAccounts)
+        ? messageAccounts
+        : null
+    let accountInfo: AccountInfo | undefined
+
+    if (isV4Session) {
+      const requestedNetworks: string[] = (request.networks ?? []).map((n) =>
+        normalizeTezosCaip2(n.chainId)
+      )
+      const servedChainIds: string[] = multiNetworkAccounts
+        ? Object.keys(multiNetworkAccounts).map(normalizeTezosCaip2)
+        : []
+
+      const isMinimumVersionV4OrHigher = isMultiNetworkVersion(this.requiredMinimumVersion)
+      // Reject silently-degraded responses: a v4 session with >=2 networks
+      // requested but no accounts fanout returned.
+      if (requestedNetworks.length >= 2 && isMinimumVersionV4OrHigher) {
+        const missing = requestedNetworks.filter((c) => !servedChainIds.includes(c))
+        if (missing.length > 0) {
+          throw new NetworksUnsupportedBeaconError({
+            requestedNetworks,
+            unsupportedNetworks: missing
+          })
+        }
+      }
+    }
+
+    if (isV4Session && multiNetworkAccounts) {
+      const builtAccounts = await this.buildAccountInfosFromV4Fanout(
+        message,
+        multiNetworkAccounts,
+        walletPeerVersion ?? '0',
+        connectionInfo
+      )
+      await this.accountManager.addAccounts(builtAccounts)
+      accountInfo = builtAccounts[0]
+      if (!accountInfo) {
+        throw new Error(
+          EMPTY_PERMISSION_ACCOUNTS_MESSAGE
+        )
+      }
+      await this.setActiveAccount(accountInfo)
+      logger.log('requestPermissions', '######## MULTI-NETWORK ACCOUNTS #######', builtAccounts.length)
+    } else {
+      accountInfo = await this.onNewAccount(message, connectionInfo)
+      logger.log('requestPermissions', '######## ACCOUNT INFO #######')
+      logger.log('requestPermissions', JSON.stringify(accountInfo))
+      await this.accountManager.addAccount(accountInfo)
+    }
+    if (!accountInfo) {
+      throw new Error(
+        EMPTY_PERMISSION_ACCOUNTS_MESSAGE
+      )
+    }
 
     const output: PermissionResponseOutput = {
       ...message,
@@ -1943,9 +2085,14 @@ export class DAppClient extends Client {
       throw await this.sendInternalError('No active account!')
     }
 
+    const resolvedNetwork: Network | string = await this.resolveOperationNetwork(
+      input.network,
+      activeAccount
+    )
+
     const request: OperationRequestInput = {
       type: BeaconMessageType.OperationRequest,
-      network: activeAccount.network || this.network,
+      network: resolvedNetwork,
       operationDetails: input.operationDetails,
       sourceAddress: activeAccount.address || ''
     }
@@ -2177,9 +2324,13 @@ export class DAppClient extends Client {
           // if the account we requested is not available, we remove it locally
           let accountInfo: AccountInfo | undefined
           if (operationRequest.sourceAddress && operationRequest.network) {
+            const networkForId: Network =
+              typeof operationRequest.network === 'string'
+                ? networkFromTezosCaip2(normalizeTezosCaip2(operationRequest.network))
+                : operationRequest.network
             const accountIdentifier = await getAccountIdentifier(
               operationRequest.sourceAddress,
-              operationRequest.network
+              networkForId
             )
             accountInfo = await this.getAccount(accountIdentifier)
 
@@ -2400,6 +2551,96 @@ export class DAppClient extends Client {
     return walletInfo
   }
 
+  // Throws VersionUnsupportedBeaconError when a wallet that reported a version
+  // is below requiredMinimumVersion (or reports a malformed one). A peer that
+  // never reported a version (legacy pairing predating versioning) is treated
+  // as unknown and allowed through, so raising the minimum never retroactively
+  // breaks an already-paired session on a pure read.
+  private assertWalletVersionMeetsMinimum(walletVersion: string | undefined): void {
+    if (walletVersion === undefined) {
+      return
+    }
+
+    const min = this.requiredMinimumVersion
+
+    let cmp: number
+    try {
+      cmp = compareBeaconVersion(walletVersion, min)
+    } catch {
+      // A present-but-malformed version cannot be shown to meet the minimum.
+      throw new VersionUnsupportedBeaconError(min, walletVersion)
+    }
+
+    if (cmp < 0) {
+      throw new VersionUnsupportedBeaconError(min, walletVersion)
+    }
+  }
+
+  // Distinct CAIP-2 chain ids across all session accounts. Reads the account
+  // store, so callers should avoid it on paths that can decide without it.
+  private async getSessionChainIds(): Promise<string[]> {
+    const allAccounts = await this.accountManager.getAccounts()
+
+    return Array.from(
+      new Set(
+        allAccounts
+          .map((a) => a.network?.chainId)
+          .filter((c): c is string => typeof c === 'string' && c.length > 0)
+      )
+    )
+  }
+
+  // Resolves the network for an outgoing operation. Returns the supplied
+  // CAIP-2 string (validated and confirmed in-session), or the active
+  // account's Network when there is no ambiguity. Throws on a multi-network
+  // session when no network is supplied.
+  private async resolveOperationNetwork(
+    inputNetwork: string | undefined,
+    activeAccount: AccountInfo
+  ): Promise<Network | string> {
+    if (inputNetwork) {
+      if (!isValidTezosCaip2(inputNetwork)) {
+        throw new NetworksUnsupportedBeaconError({
+          requestedNetworks: [inputNetwork],
+          unsupportedNetworks: [inputNetwork],
+          customMessage: `Malformed CAIP-2 string: "${inputNetwork}". Expected format: tezos:<NetID>.`
+        })
+      }
+      // Fast path: the active account is already on the requested network, so
+      // it is trivially in-session — skip the account-store read.
+      if (inputNetwork === activeAccount.network?.chainId) {
+        return inputNetwork
+      }
+      const knownChainIds = await this.getSessionChainIds()
+      // Tolerate pre-multi-network sessions with no recorded chain ids: such a
+      // wallet (v2/v3) expects a Network object, not a bare CAIP-2 string it
+      // cannot interpret, so return the active account's Network rather than the
+      // string. (There is exactly one network in a session with no chain ids.)
+      if (knownChainIds.length === 0) {
+        return activeAccount.network || this.network
+      }
+      if (!knownChainIds.includes(inputNetwork)) {
+        throw new NetworksUnsupportedBeaconError({
+          requestedNetworks: [inputNetwork],
+          unsupportedNetworks: [inputNetwork]
+        })
+      }
+
+      return inputNetwork
+    }
+
+    // No explicit network: a session spanning more than one chain is ambiguous.
+    const sessionChainIds = await this.getSessionChainIds()
+    if (sessionChainIds.length > 1) {
+      throw new NetworksUnsupportedBeaconError({
+        requestedNetworks: [],
+        unsupportedNetworks: []
+      })
+    }
+
+    return activeAccount.network || this.network
+  }
+
   private async getPeer(account?: AccountInfo): Promise<PeerInfo | undefined> {
     let peer: PeerInfo | undefined
 
@@ -2424,6 +2665,11 @@ export class DAppClient extends Client {
       logger.log('getPeer', 'Active peer', peer)
     }
 
+    // NB: getPeer() is a pure read used during session resumption, error
+    // handling and wallet-info lookups, so it must not throw on an
+    // under-minimum peer (that would wipe a resumed session or mask the real
+    // wallet error). The version gate is enforced at the pairing response and
+    // at request-send time instead — see assertWalletVersionMeetsMinimum.
     return peer
   }
 
@@ -2519,6 +2765,11 @@ export class DAppClient extends Client {
     const account = await this.getActiveAccount()
 
     const peer = await this.getPeer(account)
+
+    // Enforce the dApp's required minimum before a request leaves the SDK.
+    // No-op under the default (permissive) minimum; otherwise rejects an
+    // under-minimum wallet with VersionUnsupportedBeaconError.
+    this.assertWalletVersionMeetsMinimum(peer?.version)
 
     const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
 
@@ -2631,7 +2882,11 @@ export class DAppClient extends Client {
 
     const request: BeaconMessageWrapper<BlockchainMessage> = {
       id: messageId,
-      version: '3',
+      // Stamp the SDK's actual protocol version on the wrapped envelope so the
+      // wallet routes on the real peer.version (v4 wallets reach their
+      // multi-network branch). Backward compatible: a v3 wallet treats any
+      // version >= 3 as a wrapped message.
+      version: BEACON_VERSION,
       senderId: await getSenderId(await this.beaconId),
       message: requestInput
     }
@@ -2649,6 +2904,9 @@ export class DAppClient extends Client {
     const account = await this.getActiveAccount()
 
     const peer = await this.getPeer(account)
+
+    // Enforce the dApp's required minimum before a request leaves the SDK.
+    this.assertWalletVersionMeetsMinimum(peer?.version)
 
     const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
 
@@ -2899,6 +3157,92 @@ export class DAppClient extends Client {
     }
 
     return notificationResponse.json()
+  }
+
+  // Delegate the per-network unpacking to the Tezos blockchain plug-in (the
+  // single owner of the v4 fanout shape) and enrich each returned record with
+  // the envelope-level AccountInfo metadata that the parser doesn't see.
+  private async buildAccountInfosFromV4Fanout(
+    message: PermissionResponse,
+    fanout: PermissionResponseAccounts,
+    peerVersion: string,
+    connectionInfo: ConnectionContext
+  ): Promise<AccountInfo[]> {
+    // Keyed by the CAIP-2 namespace `'tezos'`, which is also the wire-format
+    // `blockchainIdentifier` carried by PermissionRequestV3/Response. The
+    // dApp must have registered `new TezosBlockchain()` via `addBlockchain`
+    // before requesting permissions on the v4 path.
+    const tezosBlockchain = this.blockchains.get('tezos')
+    if (!tezosBlockchain) {
+      throw new Error('Tezos blockchain handler is required to parse v4 permission responses')
+    }
+
+    // Normalize the legacy `pubkey`/`pubKey` aliases and prefix any raw key
+    // before handing the fanout to the parser. The parser keeps publicKey
+    // strings verbatim, so prefixing here keeps stored records canonical.
+    const envelopePublicKey =
+      message.publicKey ?? (message as { pubkey?: string }).pubkey
+    const prefixedEnvelopePk = envelopePublicKey ? prefixPublicKey(envelopePublicKey) : undefined
+    const prefixedFanout = Object.fromEntries(
+      Object.entries(fanout).map(([cid, raw]) => [
+        cid,
+        { ...raw, publicKey: raw?.publicKey ? prefixPublicKey(raw.publicKey) : undefined }
+      ])
+    )
+    const synthesizedResponse = {
+      blockchainIdentifier: 'tezos',
+      type: BeaconMessageType.PermissionResponse,
+      blockchainData: {
+        ...message,
+        publicKey: prefixedEnvelopePk,
+        accounts: prefixedFanout
+      }
+    } as unknown as PermissionResponseV3<'tezos'>
+
+    const partials = await tezosBlockchain.getAccountInfosFromPermissionResponse(
+      synthesizedResponse,
+      peerVersion
+    )
+
+    const walletKey = (await this.storage.get(StorageKey.LAST_SELECTED_WALLET))?.key
+
+    return Promise.all(
+      partials.map(async (p) => {
+        if (!p.publicKey && !p.address) {
+          throw new Error('PublicKey or Address must be defined for multi-network account')
+        }
+        const address: string = p.address || (await getAddressFromPublicKey(p.publicKey))
+        // The parser keys by the address it saw; re-derive accountId if we
+        // synthesized the address from a publicKey above.
+        const accountIdentifier =
+          p.address || !p.network ? p.accountId : await getAccountIdentifier(address, p.network)
+
+        return {
+          accountIdentifier,
+          senderId: message.senderId,
+          origin: {
+            type: connectionInfo.origin,
+            id: connectionInfo.id
+          },
+          walletKey,
+          address,
+          publicKey: p.publicKey || undefined,
+          // The v4 fanout parser always sets a Network (networkFromTezosCaip2);
+          // the `?? this.network` fallback keeps the type `Network` (required by
+          // AccountInfo) without an `as AccountInfo` assertion.
+          network: p.network ?? this.network,
+          scopes: message.scopes,
+          threshold: message.threshold,
+          notification: message.notification,
+          connectedAt: new Date().getTime(),
+          walletType: message.walletType ?? 'implicit',
+          verificationType: message.verificationType,
+          ...(message.verificationType === 'proof_of_event'
+            ? { hasVerifiedChallenge: false }
+            : {})
+        }
+      })
+    )
   }
 
   private async onNewAccount(

@@ -15,7 +15,13 @@ import {
   BeaconBaseMessage
   // EncryptPayloadRequestOutput
 } from '@tezos-x/octez.connect-types'
-import { AppMetadataManager, Logger, usesWrappedMessages } from '@tezos-x/octez.connect-core'
+import {
+  AppMetadataManager,
+  Logger,
+  usesWrappedMessages,
+  isMultiNetworkVersion,
+  assertNever
+} from '@tezos-x/octez.connect-core'
 import { SimulatedProofOfEventChallengeRequestOutput } from '@tezos-x/octez.connect-types/dist/esm/types/beacon/messages/BeaconRequestOutputMessage'
 
 const logger = new Logger('IncomingRequestInterceptor')
@@ -25,6 +31,16 @@ interface IncomingRequestInterceptorOptions {
   connectionInfo: ConnectionContext
   appMetadataManager: AppMetadataManager
   interceptorCallback(message: BeaconRequestOutputMessage, connectionInfo: ConnectionContext): void
+}
+
+// Annotation stamped onto the message so downstream wallet code can read the
+// resolved peer.version directly rather than re-deriving it (and avoid
+// confusing it with the inner `message.version` legacy-compat stamp).
+type MessageWithPeerVersion = (
+  | BeaconRequestMessage
+  | BeaconMessageWrapper<BeaconBaseMessage>
+) & {
+  peerVersion?: string
 }
 
 interface IncomingRequestInterceptorOptionsV2 extends IncomingRequestInterceptorOptions {
@@ -48,10 +64,27 @@ export class IncomingRequestInterceptor {
   public static async intercept(config: IncomingRequestInterceptorOptions): Promise<void> {
     logger.log('INTERCEPTING REQUEST', config.message)
 
-    if (config.message.version === '2') {
-      IncomingRequestInterceptor.handleV2Message(config as IncomingRequestInterceptorOptionsV2)
-    } else if (usesWrappedMessages(config.message.version)) {
-      IncomingRequestInterceptor.handleV3Message(config as IncomingRequestInterceptorOptionsV3)
+    // Route on the per-message envelope version, which carries the sender's
+    // protocol version: a v4 SDK stamps its BEACON_VERSION on the outgoing
+    // (wrapped) envelope, so v4 peers reach the multi-network branch while v2
+    // and wrapped-v3 peers fall through to the legacy branches below. The
+    // version is untrusted input, so isMultiNetworkVersion treats any
+    // malformed value as below-threshold rather than crashing the pipeline.
+    const peerVersion = config.message.version
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- tsc requires the intersection cast to write `.peerVersion` onto the union type
+    ;(config.message as MessageWithPeerVersion).peerVersion = peerVersion
+
+    // Await each handler so rejections propagate back to WalletClient instead
+    // of being dropped as floating promises.
+    if (isMultiNetworkVersion(peerVersion)) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- tsc requires this narrowing cast
+      await IncomingRequestInterceptor.handleV4Message(config as IncomingRequestInterceptorOptionsV3)
+    } else if (peerVersion === '2') {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- tsc requires this narrowing cast
+      await IncomingRequestInterceptor.handleV2Message(config as IncomingRequestInterceptorOptionsV2)
+    } else if (usesWrappedMessages(peerVersion)) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- tsc requires this narrowing cast
+      await IncomingRequestInterceptor.handleV3Message(config as IncomingRequestInterceptorOptionsV3)
     }
   }
 
@@ -175,6 +208,20 @@ export class IncomingRequestInterceptor {
     }
   }
 
+  /**
+   * Multi-network protocol entry point (peer.version >= 4). The envelope
+   * plumbing is shared with v3; per-blockchain handlers downstream consume
+   * v4-specific fields without re-checking the version.
+   */
+  // v4 (multi-network) shares the v3 wrapped envelope: the multi-network data
+  // (networks / CAIP-2 network) travels in the message body, which the v3
+  // handler already passes through. This is the dedicated v4 entry point so
+  // any future v4-only envelope handling has a single home.
+  private static async handleV4Message(config: IncomingRequestInterceptorOptionsV3) {
+    logger.log('INTERCEPTING REQUEST (peer.version >= 4, multi-network path)', config.message)
+    await IncomingRequestInterceptor.handleV3Message(config)
+  }
+
   private static async handleV3Message(config: IncomingRequestInterceptorOptionsV3) {
     const {
       message: msg,
@@ -221,6 +268,4 @@ export class IncomingRequestInterceptor {
   }
 }
 
-function assertNever(_message: never) {
-  throw new Error('Function not implemented.')
-}
+

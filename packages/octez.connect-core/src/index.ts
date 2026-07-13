@@ -47,6 +47,10 @@ import { setDebugEnabled, getDebugEnabled } from './debug'
 // import { EncryptPayloadResponse } from './types/beacon/messages/EncryptPayloadResponse'
 // import { EncryptionTypeNotSupportedBeaconError } from './errors/EncryptionTypeNotSupportedBeaconError'
 import { SignatureTypeNotSupportedBeaconError } from './errors/SignatureTypeNotSupportedBeaconError'
+import { VersionUnsupportedBeaconError } from './errors/VersionUnsupportedBeaconError'
+import { InvalidRequiredMinimumVersionError } from './errors/InvalidRequiredMinimumVersionError'
+import { NetworksUnsupportedBeaconError } from './errors/NetworksUnsupportedBeaconError'
+import { InvalidBeaconVersionError } from './errors/InvalidBeaconVersionError'
 import { getLogger, Logger, setLogger } from './utils/Logger'
 import { windowRef } from './MockWindow'
 import { CommunicationClient } from './transports/clients/CommunicationClient'
@@ -77,7 +81,11 @@ export {
   TransactionInvalidBeaconError,
   SignatureTypeNotSupportedBeaconError,
   // EncryptionTypeNotSupportedBeaconError,
-  UnknownBeaconError
+  UnknownBeaconError,
+  VersionUnsupportedBeaconError,
+  InvalidRequiredMinimumVersionError,
+  NetworksUnsupportedBeaconError,
+  InvalidBeaconVersionError
 }
 
 // Transport
@@ -103,7 +111,17 @@ export {
 
 // Utils
 export { getSenderId, getAccountIdentifier, windowRef, MultiTabChannel }
-export { usesWrappedMessages, MESSAGE_WRAPPED_FROM_VERSION } from './utils/message-utils'
+export {
+  usesWrappedMessages,
+  MESSAGE_WRAPPED_FROM_VERSION,
+  MULTI_NETWORK_FROM_VERSION,
+  compareBeaconVersion,
+  isAtLeastVersion,
+  isMultiNetworkVersion
+} from './utils/message-utils'
+export { normalizeTezosCaip2, isValidTezosCaip2, networkFromTezosCaip2 } from './utils/caip2'
+export { assertNever } from './utils/assert-never'
+export { resolveRequiredMinimumVersion } from './utils/required-minimum-version'
 
 // Diagnostics
 export {

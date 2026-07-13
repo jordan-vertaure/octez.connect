@@ -9,6 +9,10 @@ import { ProofOfEventChallengeResponse } from './types/beacon/messages/ProofOfEv
 import { SimulatedProofOfEventChallengeRequest } from './types/beacon/messages/SimulatedProofOfEventChallengeRequest'
 import { SimulatedProofOfEventChallengeResponse } from './types/beacon/messages/SimulatedProofOfEventChallengeResponse'
 import { Network } from './types/beacon/Network'
+import {
+  PermissionResponseAccount,
+  PermissionResponseAccounts
+} from './types/beacon/PermissionResponseAccount'
 import { BeaconBaseMessage } from './types/beacon/BeaconBaseMessage'
 import { BeaconMessageType } from './types/beacon/BeaconMessageType'
 import { PermissionScope } from './types/beacon/PermissionScope'
@@ -52,7 +56,7 @@ import { defaultValues, StorageKeyReturnDefaults } from './types/storage/Storage
 import { StorageKeyReturnType } from './types/storage/StorageKeyReturnType'
 import { ExtendedP2PPairingRequest, P2PPairingRequest } from './types/P2PPairingRequest'
 import { BeaconMessage } from './types/beacon/BeaconMessage'
-import { RequestPermissionInput } from './types/RequestPermissionInput'
+import { RequestPermissionInput, RequestPermissionNetwork } from './types/RequestPermissionInput'
 import { RequestProofOfEventChallengeInput } from './types/RequestProofOfEventChallengeInput'
 import { RequestSimulatedProofOfEventChallengeInput } from './types/RequestSimulatedProofOfEventChallengeInput'
 import { RequestSignPayloadInput } from './types/RequestSignPayloadInput'
@@ -292,6 +296,9 @@ export {
   Extension,
   EncryptedExtensionMessage,
   RequestPermissionInput,
+  RequestPermissionNetwork,
+  PermissionResponseAccount,
+  PermissionResponseAccounts,
   RequestProofOfEventChallengeInput,
   RequestSimulatedProofOfEventChallengeInput,
   RequestSignPayloadInput,

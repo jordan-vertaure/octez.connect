@@ -23,6 +23,8 @@ Besides this Typescript SDK, we also provide SDKs for native iOS and Android Wal
 
 The documentation can be found [here](https://octez-connect.tezos.com/), technical documentation can be found [here](https://typedocs.octez-connect.tezos.com/).
 
+Upgrading from v4.8.6? See the [v4.8.6 → v5.0.0-beta migration guide](./MIGRATION.md) for multi-network support, backward compatibility, and the required dApp/wallet changes.
+
 ## Installation
 
 ```

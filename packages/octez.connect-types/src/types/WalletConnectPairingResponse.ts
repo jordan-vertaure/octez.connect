@@ -10,14 +10,17 @@ export class WalletConnectPairingResponse implements PeerInfo {
   icon?: string | undefined
   appUrl?: string | undefined
   publicKey: string
-  version: string
+  // Never fabricated for WalletConnect: WC has no beacon-level version
+  // handshake, so the peer's version stays undefined ("unknown") and
+  // version-gated features fall back to the legacy path.
+  public version?: string
   protocolVersion?: number
 
   constructor(
     id: string,
     name: string,
     publicKey: string,
-    version: string,
+    version: string | undefined,
     protocolVersion?: number,
     icon?: string,
     appUrl?: string
@@ -43,7 +46,7 @@ export class ExtendedWalletConnectPairingResponse extends WalletConnectPairingRe
     id: string,
     name: string,
     publicKey: string,
-    version: string,
+    version: string | undefined,
     senderId: string,
     extensionId: string,
     protocolVersion?: number,

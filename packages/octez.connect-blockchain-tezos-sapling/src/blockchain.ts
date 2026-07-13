@@ -41,7 +41,9 @@ export class TezosSaplingBlockchain implements Blockchain {
   }
 
   async getAccountInfosFromPermissionResponse(
-    permissionResponse: TezosSaplingPermissionResponse
+    permissionResponse: TezosSaplingPermissionResponse,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by Blockchain interface; Sapling's wire shape does not vary on peer.version.
+    _peerVersion: string
   ): Promise<{
     accountId: string;
     address: string;

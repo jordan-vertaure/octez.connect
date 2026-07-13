@@ -160,4 +160,18 @@ export interface DAppClientOptions {
    * Enable metrics tracking (Disabled by Default)
    */
   enableMetrics?: boolean
+
+  /**
+   * Minimum `peer.version` the dApp will accept from a wallet. The gate is
+   * opt-in: it defaults to the lowest supported protocol version, so every
+   * wallet the SDK can talk to is accepted and upgrading the SDK never
+   * rejects existing v2/v3 wallets. Set `'4'` to require the v4
+   * multi-network protocol. Must be a decimal-integer string in
+   * `[1, BEACON_VERSION]`; otherwise `InvalidRequiredMinimumVersionError` is
+   * thrown at construction. A wallet that reports a version below this minimum
+   * is rejected with `VersionUnsupportedBeaconError` when a request is sent
+   * (a wallet that reports no version at all is treated as unknown and
+   * allowed, so legacy pairings keep working).
+   */
+  requiredMinimumVersion?: string
 }

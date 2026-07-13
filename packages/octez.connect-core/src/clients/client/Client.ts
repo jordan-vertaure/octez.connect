@@ -119,6 +119,9 @@ export abstract class Client extends BeaconClient {
    */
   public addBlockchain(chain: Blockchain) {
     this.blockchains.set(chain.identifier, chain)
+    for (const legacyIdentifier of chain.legacyIdentifiers ?? []) {
+      this.blockchains.set(legacyIdentifier, chain)
+    }
   }
 
   /**
@@ -126,7 +129,11 @@ export abstract class Client extends BeaconClient {
    * @param chainIdentifier The identifier of the blockchain to remove
    */
   public removeBlockchain(chainIdentifier: string) {
+    const chain = this.blockchains.get(chainIdentifier)
     this.blockchains.delete(chainIdentifier)
+    for (const legacyIdentifier of chain?.legacyIdentifiers ?? []) {
+      this.blockchains.delete(legacyIdentifier)
+    }
   }
 
   /**
@@ -280,18 +287,23 @@ export abstract class Client extends BeaconClient {
     const id = await generateGUID()
     const senderId = await getSenderId(await this.beaconId)
 
+    // Peers with an unknown version (WalletConnect pairings) get the legacy
+    // '2' stamp: with no negotiated version there is no basis for the wrapped
+    // (v3+) envelope, and every wallet accepts the legacy shape.
+    const peerVersion = peer.version ?? '2'
+
     const disconnectMessage: DisconnectMessage = {
       id,
-      version: peer.version,
+      version: peerVersion,
       senderId,
       type: BeaconMessageType.Disconnect
     }
 
     const request =
-      usesWrappedMessages(peer.version)
+      usesWrappedMessages(peerVersion)
         ? {
             id,
-            version: peer.version,
+            version: peerVersion,
             senderId,
             message: {
               type: disconnectMessage.type

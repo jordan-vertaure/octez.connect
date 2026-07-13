@@ -46,7 +46,9 @@ export class SubstrateBlockchain implements Blockchain {
   }
 
   async getAccountInfosFromPermissionResponse(
-    permissionResponse: SubstratePermissionResponse
+    permissionResponse: SubstratePermissionResponse,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by Blockchain interface; Substrate's wire shape does not vary on peer.version.
+    _peerVersion: string
   ): Promise<{
     accountId: string;
     address: string;
