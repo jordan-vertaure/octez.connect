@@ -6,7 +6,6 @@ import {
   BeaconBaseMessage,
   AccountInfo,
   PeerInfo,
-  BeaconMessageType,
   AppMetadata,
   BeaconRequestMessage,
   BeaconMessageWrapper,
@@ -21,7 +20,7 @@ import { Logger } from '../../utils/Logger'
 import { ClientOptions } from './ClientOptions'
 import { Transport } from '../../transports/Transport'
 import { Serializer } from '../../Serializer'
-import { negotiateEnvelopeVersion } from '../../utils/message-utils'
+import { buildDisconnectMessage } from '../../utils/message-utils'
 import { getPreferredMessageProtocolVersion } from '../../message-protocol'
 
 const logger = new Logger('Client')
@@ -286,16 +285,10 @@ export abstract class Client extends BeaconClient {
     const id = await generateGUID()
     const senderId = await getSenderId(await this.beaconId)
 
-    // Wrapped-only wire: the disconnect always ships as a wrapped envelope
-    // stamped with the negotiated version (unknown/WC peers get the '3' floor).
-    const request = {
-      id,
-      version: negotiateEnvelopeVersion(peer.version),
-      senderId,
-      message: {
-        type: BeaconMessageType.Disconnect
-      }
-    }
+    // The disconnect ships in the peer's negotiated dialect: wrapped for
+    // v3+ peers, the flat legacy shape for v2 peers (which would silently
+    // ignore a wrapped envelope).
+    const request = buildDisconnectMessage({ id, senderId }, peer.version)
 
     const protocolVersion = this.getPeerProtocolVersion(peer)
     const payload = await new Serializer(protocolVersion).serialize(request)

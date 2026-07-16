@@ -1,4 +1,5 @@
 import {
+  buildDisconnectMessage,
   compareBeaconVersion,
   isAtLeastVersion,
   isMultiNetworkVersion,
@@ -43,6 +44,26 @@ describe('negotiateEnvelopeVersion', () => {
     ['hostile version', '<script>', '2']
   ])('%s: %p → %p', (_label, peerVersion, expected) => {
     expect(negotiateEnvelopeVersion(peerVersion as string | undefined)).toBe(expected)
+  })
+})
+
+describe('buildDisconnectMessage', () => {
+  const envelope = { id: 'id1', senderId: 's1' }
+
+  it('wraps the disconnect for wrapped-capable peers', () => {
+    expect(buildDisconnectMessage(envelope, '4')).toEqual({
+      id: 'id1',
+      version: '4',
+      senderId: 's1',
+      message: { type: 'disconnect' }
+    })
+    expect(buildDisconnectMessage(envelope, '3')).toMatchObject({ version: '3' })
+  })
+
+  it('emits the flat legacy shape for v2/unknown peers (they route on top-level type)', () => {
+    const legacy = { id: 'id1', version: '2', senderId: 's1', type: 'disconnect' }
+    expect(buildDisconnectMessage(envelope, '2')).toEqual(legacy)
+    expect(buildDisconnectMessage(envelope, undefined)).toEqual(legacy)
   })
 })
 

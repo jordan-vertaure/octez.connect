@@ -1,4 +1,8 @@
-import { BeaconMessageWrapper } from '@tezos-x/octez.connect-types'
+import {
+  BeaconMessageType,
+  BeaconMessageWrapper,
+  DisconnectMessage
+} from '@tezos-x/octez.connect-types'
 import { BEACON_VERSION } from '../constants'
 
 // Structural stand-in for the beaconV3 BeaconBaseMessage ({ type: unknown }).
@@ -151,3 +155,30 @@ export const unwrapBeaconMessage = <T extends WrappedPayload>(candidate: {
   version?: string
   message?: T
 }): T | undefined => (usesWrappedMessages(candidate.version) ? candidate.message : undefined)
+
+/**
+ * Build a disconnect message in the peer's negotiated dialect: a wrapped
+ * envelope for v3+ peers, the flat legacy shape for v2 peers. A legacy peer
+ * routes on the top-level `type` and would silently ignore a wrapped
+ * envelope — the goodbye must be spoken in the dialect the peer parses.
+ *
+ * @category Utility
+ */
+export const buildDisconnectMessage = (
+  envelope: { id: string; senderId: string },
+  peerVersion: string | undefined
+): DisconnectMessage | BeaconMessageWrapper<{ type: BeaconMessageType.Disconnect }> => {
+  const version = negotiateEnvelopeVersion(peerVersion)
+
+  return usesWrappedMessages(version)
+    ? wrapBeaconMessage(
+        { id: envelope.id, version, senderId: envelope.senderId },
+        { type: BeaconMessageType.Disconnect }
+      )
+    : {
+        id: envelope.id,
+        version,
+        senderId: envelope.senderId,
+        type: BeaconMessageType.Disconnect
+      }
+}
