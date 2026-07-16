@@ -1,6 +1,11 @@
 import { Browser, expect } from '@playwright/test'
 
-export const pairWithBeaconWallet = async (browser: Browser) => {
+export const pairWithBeaconWallet = async (
+  browser: Browser,
+  options: { dappPath?: string } = {}
+) => {
+  const dappPath = options.dappPath ?? 'dapp.html'
+
   // --- setup context + grant clipboard permissions ---
   const dappCtx = await browser.newContext()
   const walletCtx = await browser.newContext()
@@ -15,7 +20,7 @@ export const pairWithBeaconWallet = async (browser: Browser) => {
   const dapp = await dappCtx.newPage()
   const wallet = await walletCtx.newPage()
 
-  await dapp.goto('http://localhost:1234/dapp.html')
+  await dapp.goto(`http://localhost:1234/${dappPath}`)
   await wallet.goto('http://localhost:1234/wallet.html')
 
   // --- trigger the octez.connect pairing alert ---
