@@ -39,10 +39,11 @@ import {
   WalletConnectPairingRequest,
   ExtendedWalletConnectPairingRequest
 } from '@tezos-x/octez.connect-types'
-import { WalletClientOptions } from './WalletClientOptions'
+import { TezosBlockchain } from '@tezos-x/octez.connect-blockchain-tezos'
 import { WalletP2PTransport } from '../transports/WalletP2PTransport'
 import { IncomingRequestInterceptor } from '../interceptors/IncomingRequestInterceptor'
 import { OutgoingResponseInterceptor } from '../interceptors/OutgoingResponseInterceptor'
+import { WalletClientOptions } from './WalletClientOptions'
 
 const logger = new Logger('WalletClient')
 
@@ -86,6 +87,11 @@ export class WalletClient extends Client {
     })
     this.permissionManager = new PermissionManager(this.storage)
     this.appMetadataManager = new AppMetadataManager(this.storage)
+    // Tezos is the default chain: the wrapped-only pipeline needs the
+    // registry handler for every request/response, so registration is no
+    // longer a consumer obligation. addBlockchain stays public — a later
+    // registration under 'tezos' overrides this default.
+    this.addBlockchain(new TezosBlockchain())
   }
 
   public async init(): Promise<TransportType> {
@@ -155,6 +161,10 @@ export class WalletClient extends Client {
           })
         }
       } else {
+        // Legacy flat v2 dialect (a v4.8.x dApp): served transparently — the
+        // flat request is already the shape wallet apps consume, and the
+        // response is emitted back in the same dialect (see
+        // OutgoingResponseInterceptor).
         const typedMessage = message as BeaconRequestMessage | DisconnectMessage
 
         if (typedMessage.type === BeaconMessageType.Disconnect) {
@@ -209,7 +219,7 @@ export class WalletClient extends Client {
     ].join(' ')
 
     const bytes = toHex(constructedString)
-    const payloadBytes = '05' + '01' + bytes.length.toString(16).padStart(8, '0') + bytes
+    const payloadBytes = `05` + `01${  bytes.length.toString(16).padStart(8, '0')  }${bytes}`
 
     return {
       challenge,
@@ -288,6 +298,7 @@ export class WalletClient extends Client {
       logger.warn('_connect', err.message)
       await transport.disconnect()
       await this._connect(--attempts)
+
       return
     }
 
