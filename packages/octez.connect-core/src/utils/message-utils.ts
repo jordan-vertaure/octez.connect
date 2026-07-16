@@ -1,3 +1,11 @@
+import { BeaconMessageWrapper } from '@tezos-x/octez.connect-types'
+import { BEACON_VERSION } from '../constants'
+
+// Structural stand-in for the beaconV3 BeaconBaseMessage ({ type: unknown }).
+// The types barrel re-exports the flat BeaconBaseMessage (which also carries
+// id/version/senderId) under the same name, so constraining on the barrel
+// type would wrongly require envelope fields on the inner payload.
+interface WrappedPayload { type: unknown }
 import { InvalidBeaconVersionError } from '../errors/InvalidBeaconVersionError'
 
 export const MESSAGE_WRAPPED_FROM_VERSION = 3
@@ -88,3 +96,58 @@ export const usesWrappedMessages = (version?: string): boolean => {
 
   return parsed !== null && parsed >= MESSAGE_WRAPPED_FROM_VERSION
 }
+
+/** The flat legacy wire dialect served to peers below the wrapped baseline. */
+export const LEGACY_ENVELOPE_VERSION = '2'
+
+/**
+ * The envelope version to stamp on an outgoing message for a peer that
+ * declared `peerVersion` at pairing: `min(peerVersion, BEACON_VERSION)` with
+ * a floor at the flat legacy dialect ('2').
+ *
+ * This is the backward-compatibility pivot: a peer that declared '2' — or
+ * never declared a version at all (legacy pairings, WalletConnect peers,
+ * malformed values) — is served the flat v2 dialect it has always spoken; a
+ * v3 peer receives '3' wrapped envelopes and never sees v4 payload fields;
+ * a v4 peer gets the full wrapped v4 wire. Callers pick the message SHAPE
+ * with `usesWrappedMessages(negotiated)` and gate v4 fields (`networks`/
+ * `accounts`) on `isMultiNetworkVersion(negotiated)`.
+ *
+ * @category Utility
+ */
+export const negotiateEnvelopeVersion = (peerVersion: string | undefined): string => {
+  if (!isAtLeastVersion(peerVersion, String(MESSAGE_WRAPPED_FROM_VERSION))) {
+    return LEGACY_ENVELOPE_VERSION
+  }
+
+  return isAtLeastVersion(peerVersion, BEACON_VERSION) ? BEACON_VERSION : (peerVersion as string)
+}
+
+/**
+ * Build a wrapped beacon envelope. Single source of truth for the
+ * `{ id, version, senderId, message }` wire shape so senders cannot drift.
+ *
+ * @category Utility
+ */
+export const wrapBeaconMessage = <T extends WrappedPayload>(
+  envelope: { id: string; version: string; senderId: string },
+  message: T
+): BeaconMessageWrapper<T> => ({
+  id: envelope.id,
+  version: envelope.version,
+  senderId: envelope.senderId,
+  message
+})
+
+/**
+ * Extract the inner payload of a wrapped beacon envelope, or `undefined`
+ * when the candidate's version does not follow the wrapped (v3+) contract.
+ * Callers must treat `undefined` as "not a wrapped message" and drop or
+ * tombstone it — never fall back to reading flat fields.
+ *
+ * @category Utility
+ */
+export const unwrapBeaconMessage = <T extends WrappedPayload>(candidate: {
+  version?: string
+  message?: T
+}): T | undefined => (usesWrappedMessages(candidate.version) ? candidate.message : undefined)
