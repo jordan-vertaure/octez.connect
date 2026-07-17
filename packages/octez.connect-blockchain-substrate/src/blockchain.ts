@@ -9,11 +9,31 @@ import {
   Network,
   PermissionScope
 } from '@tezos-x/octez.connect-types'
+import {
+  fetchWalletListsFromGitHub,
+  WalletLists,
+  loadWalletLists
+} from '@tezos-x/octez.connect-utils'
 import { SubstratePermissionResponse } from './types/messages/permission-response'
-import bundledSubstrateRegistry from '@tezos-x/octez.connect-ui/data/substrate.json'
-import { loadWalletLists } from '@tezos-x/octez.connect-utils'
+import { bundledWalletRegistry as bundledSubstrateRegistry } from './data/bundled-wallet-registry'
 
-const { desktopList, extensionList, iOSList, webList } = loadWalletLists(bundledSubstrateRegistry)
+let walletListsPromise: Promise<WalletLists> | undefined
+
+// Fetch-first with bundled fallback: the live list comes from the
+// wallet-list repo's CDN, so new wallets reach dApps without an SDK
+// release; the generated snapshot keeps the alert working offline. A
+// failed fetch is not cached, so the next call retries.
+const resolveWalletLists = (): Promise<WalletLists> => {
+  walletListsPromise ??= fetchWalletListsFromGitHub('substrate').then((registry) => {
+    if (registry === null) {
+      walletListsPromise = undefined
+    }
+
+    return loadWalletLists(registry ?? bundledSubstrateRegistry)
+  })
+
+  return walletListsPromise
+}
 
 export class SubstrateBlockchain implements Blockchain {
   public readonly identifier: string = 'substrate'
@@ -37,12 +57,7 @@ export class SubstrateBlockchain implements Blockchain {
     webList: WebApp[]
     iOSList: App[]
   }> {
-    return {
-      extensionList: extensionList,
-      desktopList: desktopList,
-      webList: webList,
-      iOSList: iOSList
-    }
+    return resolveWalletLists()
   }
 
   async getAccountInfosFromPermissionResponse(

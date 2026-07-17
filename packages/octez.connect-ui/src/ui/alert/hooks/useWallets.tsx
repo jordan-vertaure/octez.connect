@@ -3,7 +3,7 @@ import { PostMessageTransport } from '@tezos-x/octez.connect-transport-postmessa
 import { arrangeTopWallets, mergeWallets, parseWallets } from '../../../utils/wallets'
 import { Extension, NetworkType, ExtensionApp, DesktopApp, App, WebApp } from '@tezos-x/octez.connect-types'
 import { windowRef } from '@tezos-x/octez.connect-core'
-import { fetchWalletListsFromGitHub } from '../../../utils/walletListFetcher'
+import { fetchWalletListsFromGitHub } from '@tezos-x/octez.connect-utils'
 import bundledTezosRegistry from '../../../data/tezos.json'
 import bundledSubstrateRegistry from '../../../data/substrate.json'
 
