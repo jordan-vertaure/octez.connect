@@ -10,6 +10,10 @@ export enum NetworkType {
   TALLINNNET = 'tallinnnet',
   TEZLINK_SHADOWNET = 'tezlink-shadownet',
   TEZOSX_PREVIEWNET = 'tezosx-previewnet',
+  /** Tezos X L2 (Michelson runtime) — long-lived mainnet deployment. */
+  TEZOSX_MAINNET = 'tezosx-mainnet',
+  /** Tezos X L2 (Michelson runtime) — shadownet deployment. */
+  TEZOSX_SHADOWNET = 'tezosx-shadownet',
   USHUAIANET = 'ushuaianet',
   CUSTOM = 'custom'
 }

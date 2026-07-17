@@ -19,6 +19,14 @@ import { ChangeAccountRequest } from './messages/ChangeAccountRequest'
 
 /**
  * @internalapi
+ *
+ * The flat message shapes. These serve two roles: (1) the public API
+ * surface — dApp `request*` inputs/outputs and the wallet's
+ * `newMessageCallback`/`respond` payloads are normalized to and from these
+ * shapes at the SDK boundary regardless of wire dialect; (2) the legacy v2
+ * wire dialect itself, served transparently to peers that negotiated below
+ * the wrapped (v3+) baseline. Wrapped-capable peers exchange
+ * `BeaconMessageWrapper` envelopes instead.
  */
 export type BeaconMessage =
   | PermissionRequest

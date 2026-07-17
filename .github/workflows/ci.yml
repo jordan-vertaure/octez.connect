@@ -32,6 +32,14 @@ jobs:
       - name: Install dependencies
         run: ./scripts/npm11.sh ci --include=optional
 
+      # The lint gate must run on BUILT package types: type-aware rules
+      # (e.g. no-unnecessary-type-assertion) resolve cross-package
+      # @tezos-x/* imports from each package's dist; without it every
+      # imported type degrades to `any` and the rules report false
+      # positives on perfectly necessary assertions.
+      - name: Build packages (types for the lint gate)
+        run: ./scripts/npm11.sh run build:packages
+
       - name: Gate new lint findings
         env:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}

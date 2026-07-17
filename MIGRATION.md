@@ -29,10 +29,15 @@ single‑network (legacy) accounts.
 | **v4.8.6** | **v4.8.6** | ✅ Unchanged. |
 
 **How the handshake works:** each peer advertises its protocol version at
-pairing time (`peer.version`). The dApp only uses multi-network features when
-the wallet advertises version ≥ 4; otherwise it silently falls back. Malformed
-or absent versions are always treated as "below v4", so a hostile or legacy
-peer can never trip the new code paths.
+pairing time (`peer.version`), and every outgoing message is stamped with the
+negotiated dialect — `min(peer.version, '4')`, floor `'2'`. A v4.8.6 peer is
+served the flat v2 wire it has always spoken; wrapped-capable peers exchange
+v3/v4 envelopes; the dApp only uses multi-network features when the wallet
+advertises version ≥ 4. Malformed or absent versions are always treated as
+"below v4" (and served the flat dialect), so a hostile or legacy peer can
+never trip the new code paths. WalletConnect peers carry **no** beacon
+version (never fabricated); their multi-network capability is negotiated via
+session namespaces instead (see §3).
 
 **Graceful degradation (important nuance):** by default a v5 dApp that requests
 multiple networks from a **v4.8.6 wallet** receives a **single** account (the
@@ -107,14 +112,14 @@ const client = new DAppClient({
   requiredMinimumVersion: '4'
 })
 
-// REQUIRED for the multi-network response parser:
-client.addBlockchain(new TezosBlockchain())
+// TezosBlockchain is registered by DEFAULT in v5 — no addBlockchain call
+// needed (calling it again to override is still allowed).
 
 // Ask for several networks at once (CAIP-2 chain ids):
 await client.requestPermissions({
   networks: [
-    { chainId: 'tezos:NetXdQprcVkpaWU7' }, // mainnet
-    { chainId: 'tezos:NetXnHfVqm9iesp9' }  // ghostnet
+    { chainId: 'tezos:NetXdQprcVkpaWU' }, // mainnet
+    { chainId: 'tezos:NetXnHfVqm9iesp' }  // ghostnet
   ]
 })
 
@@ -123,15 +128,23 @@ const accounts = await client.getAccounts()
 
 // Target a specific network on an operation:
 await client.requestOperation({
-  network: 'tezos:NetXnHfVqm9iesp9',
+  network: 'tezos:NetXnHfVqm9iesp',
   operationDetails: [ /* ... */ ]
 })
 ```
 
 Key points:
-- **`addBlockchain(new TezosBlockchain())` is required** before requesting
-  multi-network permissions — the fanout parser throws without it. (The
-  single-network flow does not need it.)
+- **No registration needed:** `DAppClient` and `WalletClient` register
+  `TezosBlockchain` by default. `addBlockchain` remains public for other
+  chains or overrides.
+- **Over WalletConnect**, `requestPermissions({ networks })` drives the WC
+  **session proposal**: your preferred network stays in `requiredNamespaces`,
+  the extra networks go to `optionalNamespaces` — a single-network wallet
+  (e.g. Kukai iOS today) simply ignores the optionals and keeps working with
+  one network; a multi-network wallet approves accounts per chain. Networks
+  must map to a known genesis id (table in §5); unmapped ids are excluded
+  from the WC proposal. The proposal is fixed at pairing time: widening the
+  network set on a live WC session requires re-pairing.
 - `requestPermissions({ networks })` is **additive** — omit `networks` and
   behaviour is exactly as before (one account).
 - `requestOperation({ network })` takes a **CAIP‑2 string**
@@ -221,6 +234,27 @@ returns a single account and the dApp treats the session as single-network.
 
 **New `DAppClientOptions`:** `requiredMinimumVersion?: string` (decimal‑integer
 string in `[1, BEACON_VERSION]`; default `'2'` = accept any wallet).
+
+**NetworkType ↔ genesis chain id table** (used at the WalletConnect boundary;
+RPC‑sourced and locked by unit test):
+
+| NetworkType | Genesis (CAIP‑2 reference) |
+|---|---|
+| `mainnet` | `NetXdQprcVkpaWU` |
+| `ghostnet` | `NetXnHfVqm9iesp` |
+| `shadownet` | `NetXsqzbfFenSTS` |
+| `tezosx-mainnet` | `NetXohUVN5QWR4f` |
+| `ushuaianet` | `NetXpX8WSZkAZZA` |
+
+`tezosx-mainnet` is the Tezos X L2 (Michelson runtime) — the same Tezos
+smart-contract language, so it needs no separate blockchain handler; it is
+addressed like any other Tezos chain by its CAIP‑2 id.
+
+`weeklynet`/`dailynet` (rotating genesis), `custom`, and networks without a
+public RPC (`tallinnnet`, `seoulnet`, `tezlink-shadownet`,
+`tezosx-previewnet`, `tezosx-shadownet`) are not statically mappable —
+multi-network requests for them travel over P2P/postmessage only (chain ids
+pass through opaquely).
 `disableWalletConnect?: boolean` **already existed in v4.8.6** — it is not new;
 only its interaction with the WC opt‑in default changed (see §2.1).
 
@@ -236,8 +270,11 @@ only its interaction with the WC opt‑in default changed (see §2.1).
 `WalletClient.subscribeToDisconnect` / `unsubscribeFromDisconnect`.
 
 **Changed defaults/behaviour:** WalletConnect opt‑in; `BEACON_VERSION` `3` → `4`;
-Tezos identifier `'xtz'` → `'tezos'`; no built‑in request timeout;
-WalletConnect `2.18.0` → `2.23.6`.
+Tezos identifier `'xtz'` → `'tezos'` (with a `'xtz'` legacy registry alias);
+no built‑in request timeout; WalletConnect `2.18.0` → `2.23.6`;
+`TezosBlockchain` registered by default in both clients; the wire dialect is
+negotiated per peer (wrapped v3/v4 for capable peers, flat v2 otherwise) —
+transparent to integrators.
 
 > Note: passing `network` to `requestPermissions()` already threw in v4.8.6
 > (set `network` on the `DAppClient` constructor) — unchanged in v5, listed

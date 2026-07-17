@@ -1,0 +1,171 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <title>octez.connect LEGACY (4.8.6) Example DApp</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css" />
+
+    <script>
+      // This will enable the debug mode of beacon
+      // This should only be used during development
+      window.beaconSdkDebugEnabled = true
+    </script>
+
+    <!--
+      The REAL published 4.8.6 browser bundle (flat v2 wire, no wrapped
+      envelopes on the beacon P2P path). See examples/legacy/README.md for
+      provenance. This page intentionally uses the 4.8.6 API surface only.
+    -->
+    <script src="./legacy/octez.connect-4.8.6.min.js"></script>
+  </head>
+
+  <body>
+    octez.connect LEGACY (4.8.6) Example DApp
+    <br /><br />
+    <span>
+      Active account:
+      <span id="activeAccount"></span>
+      <span id="activeAccountNetwork"></span>
+      <span id="activeAccountTransport"></span>
+    </span>
+    <br />
+    <span>
+      Last sign result:
+      <span id="signResult"></span>
+    </span>
+    <br />
+    <span>
+      Last operation result:
+      <span id="operationResult"></span>
+    </span>
+    <br /><br />
+    <button id="requestPermission">Request Permission</button>
+    <br /><br />
+    <button id="signPayloadRaw">Sign Payload (Raw)</button>
+    <br /><br />
+    <button id="sendToSelf">Send 1 mutez to myself</button>
+    <br /><br />
+    <button id="reset">Reset and Refresh</button>
+
+    <script>
+      // Initiate DAppClient — 4.8.6 API (getDAppClientInstance existed and is
+      // what the 4.8.6 example dApp used; `new beacon.DAppClient(...)` is
+      // equivalent for a single instance).
+      const client = new beacon.DAppClient({
+        name: 'Legacy Dapp',
+        appUrl: 'http://localhost:8080',
+        // Same option shape the 4.8.6 example dApp shipped with.
+        walletConnectOptions: {
+          projectId: '97f804b46f0db632c52af0556586a5f3',
+          relayUrl: 'wss://relay.walletconnect.com'
+        },
+        matrixNodes: {
+          [beacon.Regions.EUROPE_WEST]: [
+            'beacon-node-1.octez.io',
+            'beacon-node-2.octez.io',
+            'beacon-node-3.octez.io',
+            'beacon-node-4.octez.io',
+            'beacon-node-5.octez.io',
+            'beacon-node-6.octez.io',
+            'beacon-node-7.octez.io',
+            'beacon-node-8.octez.io'
+          ],
+          [beacon.Regions.NORTH_AMERICA_EAST]: []
+        },
+        featuredWallets: ['kukai', 'metamask', 'airgap'],
+        network: {
+          type: beacon.NetworkType.GHOSTNET
+        }
+      })
+
+      // Display the active account in the UI (mirrors examples/dapp.html)
+      const updateActiveAccount = () => {
+        client.getActiveAccount().then((activeAccount) => {
+          if (activeAccount) {
+            document.getElementById('activeAccount').innerText = activeAccount.address
+            document.getElementById('activeAccountNetwork').innerText = activeAccount.network.type
+            document.getElementById('activeAccountTransport').innerText = activeAccount.origin.type
+          } else {
+            document.getElementById('activeAccount').innerText = ''
+            document.getElementById('activeAccountNetwork').innerText = ''
+            document.getElementById('activeAccountTransport').innerText = ''
+          }
+        })
+      }
+
+      client.subscribeToEvent('ACTIVE_ACCOUNT_SET', (account) => {
+        console.log('ACTIVE_ACCOUNT_SET received', account)
+        updateActiveAccount()
+      })
+
+      // Initiate a permission request
+      document.getElementById('requestPermission').addEventListener('click', () => {
+        client
+          .requestPermissions()
+          .then((permissions) => {
+            console.log('permissions', permissions)
+            // e2e hook: the resolved output spreads the wallet's flat wire
+            // response, so `version` is the dialect the wallet answered in
+            // ('2' when a current wallet serves this legacy dApp).
+            window.__lastPermissionResponse = permissions
+            updateActiveAccount()
+          })
+          .catch((error) => {
+            console.log('error during permission request', error)
+          })
+      })
+
+      // Sign payload (raw) — same payload as examples/dapp.html
+      document.getElementById('signPayloadRaw').addEventListener('click', async () => {
+        const el = document.getElementById('signResult')
+        el.innerText = ''
+        try {
+          const signature = await client.requestSignPayload({
+            payload:
+              '05010000004254657a6f73205369676e6564204d6573736167653a207465737455726c20323032332d30322d30385431303a33363a31382e3435345a2048656c6c6f20576f726c64'
+          })
+          console.log('signature:', signature)
+          el.innerText = 'signature:' + signature.signature
+        } catch (error) {
+          console.log('error during sign request', error)
+          // e2e hook: a typed errorType here means the flat v2 ErrorResponse
+          // round-tripped AND was parsed by the 4.8.6 client.
+          el.innerText = 'error:' + (error && (error.errorType || error.message))
+        }
+      })
+
+      // Send 1 mutez to self — mirrors examples/dapp.html's sendToSelf
+      document.getElementById('sendToSelf').addEventListener('click', async () => {
+        const el = document.getElementById('operationResult')
+        el.innerText = ''
+        try {
+          const activeAccount = await client.getActiveAccount()
+          const result = await client.requestOperation({
+            operationDetails: [
+              {
+                kind: beacon.TezosOperationType.TRANSACTION,
+                destination: (activeAccount && activeAccount.address) || '',
+                amount: '1'
+              }
+            ]
+          })
+          console.log('operation result', result)
+          el.innerText = 'hash:' + result.transactionHash
+        } catch (error) {
+          console.log('error during operation request', error)
+          el.innerText = 'error:' + (error && (error.errorType || error.message))
+        }
+      })
+
+      // Add event listener to the button
+      document.getElementById('reset').addEventListener('click', () => {
+        client.destroy().then(() => {
+          window.location.reload()
+        })
+      })
+    </script>
+  </body>
+</html>

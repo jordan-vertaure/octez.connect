@@ -1,7 +1,11 @@
 import {
+  buildDisconnectMessage,
   compareBeaconVersion,
   isAtLeastVersion,
-  isMultiNetworkVersion
+  isMultiNetworkVersion,
+  negotiateEnvelopeVersion,
+  wrapBeaconMessage,
+  unwrapBeaconMessage
 } from '../../src/utils/message-utils'
 import { InvalidBeaconVersionError } from '../../src/errors/InvalidBeaconVersionError'
 
@@ -22,6 +26,65 @@ describe('isAtLeastVersion / isMultiNetworkVersion', () => {
     expect(isMultiNetworkVersion('2')).toBe(false)
     expect(isMultiNetworkVersion(undefined)).toBe(false)
     expect(isMultiNetworkVersion('<script>')).toBe(false)
+  })
+})
+
+describe('negotiateEnvelopeVersion', () => {
+  // min(peer.version, BEACON_VERSION) with a floor at the flat legacy
+  // dialect '2' — backward compatibility: legacy/unknown/malformed peers are
+  // served the flat wire they have always spoken, never rejected.
+  it.each([
+    ['unknown peer (WalletConnect / legacy pairing)', undefined, '2'],
+    ['legacy v2 peer', '2', '2'],
+    ['pre-v2 peer floors at the legacy dialect', '1', '2'],
+    ['v3 peer', '3', '3'],
+    ['v4 peer', '4', '4'],
+    ['future peer capped at own version', '5', '4'],
+    ['malformed version', '4.1', '2'],
+    ['hostile version', '<script>', '2']
+  ])('%s: %p → %p', (_label, peerVersion, expected) => {
+    expect(negotiateEnvelopeVersion(peerVersion as string | undefined)).toBe(expected)
+  })
+})
+
+describe('buildDisconnectMessage', () => {
+  const envelope = { id: 'id1', senderId: 's1' }
+
+  it('wraps the disconnect for wrapped-capable peers', () => {
+    expect(buildDisconnectMessage(envelope, '4')).toEqual({
+      id: 'id1',
+      version: '4',
+      senderId: 's1',
+      message: { type: 'disconnect' }
+    })
+    expect(buildDisconnectMessage(envelope, '3')).toMatchObject({ version: '3' })
+  })
+
+  it('emits the flat legacy shape for v2/unknown peers (they route on top-level type)', () => {
+    const legacy = { id: 'id1', version: '2', senderId: 's1', type: 'disconnect' }
+    expect(buildDisconnectMessage(envelope, '2')).toEqual(legacy)
+    expect(buildDisconnectMessage(envelope, undefined)).toEqual(legacy)
+  })
+})
+
+describe('wrapBeaconMessage / unwrapBeaconMessage', () => {
+  const inner = { type: 'permission_request' } as any
+
+  it('wrap builds the canonical envelope shape', () => {
+    expect(wrapBeaconMessage({ id: 'id1', version: '4', senderId: 's1' }, inner)).toEqual({
+      id: 'id1',
+      version: '4',
+      senderId: 's1',
+      message: inner
+    })
+  })
+
+  it('unwrap returns the payload only for wrapped (v3+) versions', () => {
+    expect(unwrapBeaconMessage({ version: '4', message: inner })).toBe(inner)
+    expect(unwrapBeaconMessage({ version: '3', message: inner })).toBe(inner)
+    expect(unwrapBeaconMessage({ version: '2', message: inner })).toBeUndefined()
+    expect(unwrapBeaconMessage({ version: '3.0', message: inner })).toBeUndefined()
+    expect(unwrapBeaconMessage({ message: inner })).toBeUndefined()
   })
 })
 

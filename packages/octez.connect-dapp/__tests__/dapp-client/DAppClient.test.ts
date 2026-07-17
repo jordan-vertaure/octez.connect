@@ -311,6 +311,45 @@ describe('DAppClient — V3 message without payload (#33)', () => {
   })
 })
 
+describe('DAppClient — multi-tab RESPONSE relay (wrapped-only wire)', () => {
+  it('relays the ORIGINAL wrapped envelope to other tabs, not the normalized flat message', async () => {
+    const client = new DAppClient({
+      name: 'MultiTabApp',
+      storage: new LocalStorage(),
+      preferredNetwork: NetworkType.MAINNET
+    })
+
+    const postMessage = jest.fn()
+    ;(client as any).multiTabChannel = { postMessage }
+    ;(client as any).openRequestsOtherTabs.add('req-other-tab')
+
+    // A wrapped tezos operation response for a request opened by another tab.
+    const wireMessage = {
+      id: 'req-other-tab',
+      version: '4',
+      senderId: 'wallet-sender',
+      message: {
+        blockchainIdentifier: 'tezos',
+        type: BeaconMessageType.BlockchainResponse,
+        blockchainData: { type: 'operation_response', transactionHash: 'op123' }
+      }
+    } as any
+
+    await (client as any).handleResponse(wireMessage, { origin: 'walletconnect', id: 'conn-1' })
+
+    expect(postMessage).toHaveBeenCalledTimes(1)
+    const relayed = postMessage.mock.calls[0][0]
+    expect(relayed.type).toBe('RESPONSE')
+    // The receiving tab funnels data.message straight back into its own
+    // handleResponse, whose wrapped-only contract drops flat arrivals — so the
+    // relayed message must still be the wire envelope (payload intact).
+    expect(relayed.data.message).toBe(wireMessage)
+    expect(relayed.data.message.message).toBeDefined()
+    // Consumed: the relay must only happen once per request.
+    expect((client as any).openRequestsOtherTabs.has('req-other-tab')).toBe(false)
+  })
+})
+
 describe('DAppClient.resolveOperationNetwork', () => {
   let client: DAppClient
   const L1 = 'tezos:NetXsqzbfFenSTS'
@@ -424,7 +463,8 @@ describe('DAppClient — requiredMinimumVersion', () => {
 
   it('defaults requiredMinimumVersion to the permissive lowest version when omitted', () => {
     // The gate is opt-in: by default every wallet the SDK can talk to is
-    // accepted, so upgrading the SDK never rejects existing v2/v3 wallets.
+    // accepted (the legacy flat v2 dialect included), so upgrading the SDK
+    // never rejects existing v2/v3 wallets.
     const client = new DAppClient({
       name: 'TestApp',
       storage: new LocalStorage(),
@@ -558,5 +598,161 @@ describe('TezosBlockchain.getAccountInfosFromPermissionResponse', () => {
     // unusable account; only the valid CAIP-2 entry survives.
     expect(out).toHaveLength(1)
     expect(out[0].address).toBe('tz1OnL1')
+  })
+})
+
+describe('DAppClient — wrapped-wire boundary mappers (hard fork)', () => {
+  const client: any = new DAppClient({
+    name: 'TestApp',
+    storage: new LocalStorage(),
+    preferredNetwork: NetworkType.MAINNET
+  })
+
+  describe('wrapTezosRequest', () => {
+    const flatPermissionRequest = {
+      type: BeaconMessageType.PermissionRequest,
+      appMetadata: { senderId: 's', name: 'TestApp' },
+      network: { type: NetworkType.MAINNET },
+      scopes: ['sign'],
+      networks: [{ chainId: 'tezos:NetXdQprcVkpaWU' }]
+    }
+
+    it('stamps the negotiated version and keeps v4 fields for a v4 envelope', () => {
+      const wrapped = client.wrapTezosRequest(
+        flatPermissionRequest,
+        { id: 'id1', version: '4', senderId: 'me' },
+        undefined
+      )
+      expect(wrapped).toMatchObject({
+        id: 'id1',
+        version: '4',
+        senderId: 'me',
+        message: {
+          blockchainIdentifier: 'tezos',
+          type: BeaconMessageType.PermissionRequest
+        }
+      })
+      expect(wrapped.message.blockchainData.networks).toEqual([
+        { chainId: 'tezos:NetXdQprcVkpaWU' }
+      ])
+    })
+
+    it('strips the v4 networks field for a v3 envelope (v3 peers never see v4 fields)', () => {
+      const wrapped = client.wrapTezosRequest(
+        flatPermissionRequest,
+        { id: 'id1', version: '3', senderId: 'me' },
+        undefined
+      )
+      expect(wrapped.message.blockchainData.networks).toBeUndefined()
+      expect(wrapped.message.blockchainData.network).toEqual({ type: NetworkType.MAINNET })
+    })
+
+    it('maps a flat operation request onto a tezos BlockchainRequest payload', () => {
+      const wrapped = client.wrapTezosRequest(
+        {
+          type: BeaconMessageType.OperationRequest,
+          network: 'tezos:NetXdQprcVkpaWU',
+          operationDetails: [{ kind: 'transaction' }],
+          sourceAddress: 'tz1abc'
+        },
+        { id: 'id2', version: '4', senderId: 'me' },
+        { accountIdentifier: 'acc-1' }
+      )
+      expect(wrapped.message).toEqual({
+        blockchainIdentifier: 'tezos',
+        type: BeaconMessageType.BlockchainRequest,
+        accountId: 'acc-1',
+        blockchainData: {
+          type: 'operation_request',
+          scope: 'operation_request',
+          network: 'tezos:NetXdQprcVkpaWU',
+          operationDetails: [{ kind: 'transaction' }],
+          sourceAddress: 'tz1abc'
+        }
+      })
+    })
+  })
+
+  describe('normalizeWrappedTezosMessage', () => {
+    it('normalizes a wrapped tezos permission response to the flat public shape', () => {
+      const flat = client.normalizeWrappedTezosMessage({
+        id: 'id1',
+        version: '4',
+        senderId: 'wallet',
+        message: {
+          blockchainIdentifier: 'tezos',
+          type: BeaconMessageType.PermissionResponse,
+          blockchainData: {
+            appMetadata: { senderId: 'wallet', name: 'Wallet' },
+            scopes: ['sign'],
+            address: 'tz1abc',
+            accounts: { 'tezos:NetXdQprcVkpaWU': { address: 'tz1abc' } }
+          }
+        }
+      })
+      expect(flat).toEqual({
+        id: 'id1',
+        version: '4',
+        senderId: 'wallet',
+        type: BeaconMessageType.PermissionResponse,
+        appMetadata: { senderId: 'wallet', name: 'Wallet' },
+        scopes: ['sign'],
+        address: 'tz1abc',
+        accounts: { 'tezos:NetXdQprcVkpaWU': { address: 'tz1abc' } }
+      })
+    })
+
+    it('normalizes a wrapped tezos operation response to the flat public shape', () => {
+      const flat = client.normalizeWrappedTezosMessage({
+        id: 'id2',
+        version: '3',
+        senderId: 'wallet',
+        message: {
+          blockchainIdentifier: 'tezos',
+          type: BeaconMessageType.BlockchainResponse,
+          blockchainData: { type: 'operation_response', transactionHash: 'oo123' }
+        }
+      })
+      expect(flat).toEqual({
+        id: 'id2',
+        version: '3',
+        senderId: 'wallet',
+        type: BeaconMessageType.OperationResponse,
+        transactionHash: 'oo123'
+      })
+    })
+
+    it('normalizes wrapped errors to the flat ErrorResponse consumed by handleRequestError', () => {
+      const flat = client.normalizeWrappedTezosMessage({
+        id: 'id3',
+        version: '4',
+        senderId: 'wallet',
+        message: {
+          blockchainIdentifier: 'tezos',
+          type: BeaconMessageType.Error,
+          error: { type: BeaconErrorType.ABORTED_ERROR },
+          description: 'user closed'
+        }
+      })
+      expect(flat).toMatchObject({
+        type: BeaconMessageType.Error,
+        errorType: BeaconErrorType.ABORTED_ERROR,
+        description: 'user closed'
+      })
+    })
+
+    it('passes non-tezos payloads through untouched (generic chain API)', () => {
+      const result = client.normalizeWrappedTezosMessage({
+        id: 'id4',
+        version: '3',
+        senderId: 'wallet',
+        message: {
+          blockchainIdentifier: 'substrate',
+          type: BeaconMessageType.BlockchainResponse,
+          blockchainData: { type: 'transfer_response' }
+        }
+      })
+      expect(result).toBeUndefined()
+    })
   })
 })
