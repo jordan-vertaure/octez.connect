@@ -26,6 +26,8 @@ export interface WebApp extends AppBase {
     [NetworkType.TALLINNNET]?: string
     [NetworkType.TEZLINK_SHADOWNET]?: string
     [NetworkType.TEZOSX_PREVIEWNET]?: string
+    [NetworkType.TEZOSX_MAINNET]?: string
+    [NetworkType.TEZOSX_SHADOWNET]?: string
     [NetworkType.USHUAIANET]?: string
     [NetworkType.CUSTOM]?: string
   }

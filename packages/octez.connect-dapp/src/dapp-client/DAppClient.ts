@@ -99,7 +99,6 @@ import {
   buildErrorContext,
   UnknownBeaconError,
   AbortedBeaconError,
-  BEACON_VERSION,
   compareBeaconVersion,
   isMultiNetworkVersion,
   VersionUnsupportedBeaconError,
@@ -107,8 +106,12 @@ import {
   normalizeTezosCaip2,
   isValidTezosCaip2,
   networkFromTezosCaip2,
-  resolveRequiredMinimumVersion
+  networkTypeFromTezosCaip2,
+  resolveRequiredMinimumVersion,
+  negotiateEnvelopeVersion,
+  wrapBeaconMessage
 } from '@tezos-x/octez.connect-core'
+import { TezosBlockchain } from '@tezos-x/octez.connect-blockchain-tezos'
 import {
   getAddressFromPublicKey,
   ExposedPromise,
@@ -120,15 +123,6 @@ import {
   isValidAddress,
   getKeypairFromSeed
 } from '@tezos-x/octez.connect-utils'
-import { messageEvents } from '../beacon-message-events'
-import { BlockExplorer } from '../utils/block-explorer'
-import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
-import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
-
-import { DAppClientOptions } from './DAppClientOptions'
-import { DappPostMessageTransport } from '../transports/DappPostMessageTransport'
-import { DappP2PTransport } from '../transports/DappP2PTransport'
-import { DappWalletConnectTransport } from '../transports/DappWalletConnectTransport'
 import { PostMessageTransport } from '@tezos-x/octez.connect-transport-postmessage'
 import {
   AlertButton,
@@ -150,6 +144,15 @@ import {
   currentOS
 } from '@tezos-x/octez.connect-ui'
 import { WalletConnectTransport } from '@tezos-x/octez.connect-transport-walletconnect'
+import { messageEvents } from '../beacon-message-events'
+import { BlockExplorer } from '../utils/block-explorer'
+import { BeaconEvent, BeaconEventHandlerFunction, BeaconEventType, BeaconEventHandler } from '../events'
+import { TzktBlockExplorer } from '../utils/tzkt-blockexplorer'
+
+import { DappPostMessageTransport } from '../transports/DappPostMessageTransport'
+import { DappP2PTransport } from '../transports/DappP2PTransport'
+import { DappWalletConnectTransport } from '../transports/DappWalletConnectTransport'
+import { DAppClientOptions } from './DAppClientOptions'
 
 const logger = new Logger('DAppClient')
 
@@ -179,7 +182,7 @@ export class DAppClient extends Client {
   /**
    * Automatically switch between apps on Mobile Devices (Enabled by Default)
    */
-  private enableAppSwitching: boolean
+  private readonly enableAppSwitching: boolean
 
   /**
    * Enable metrics tracking (Disabled by Default)
@@ -238,6 +241,13 @@ export class DAppClient extends Client {
   private _initPromiseReject: ((reason?: ErrorResponse | AbortedBeaconError) => void) | undefined
   private isInitPending: boolean = false
 
+  /**
+   * Networks mapped for the next WalletConnect session proposal when
+   * `requestPermissions` runs before the WalletConnect transport exists (it
+   * is created lazily in `init`). Applied and cleared right after creation.
+   */
+  private pendingWcProposalNetworks: NetworkType[] | undefined
+
   private readonly activeAccountLoaded: Promise<AccountInfo | undefined>
 
   private readonly appMetadataManager: AppMetadataManager
@@ -258,7 +268,7 @@ export class DAppClient extends Client {
 
   private debounceSetActiveAccount: boolean = false
 
-  private multiTabChannel = new MultiTabChannel(
+  private readonly multiTabChannel = new MultiTabChannel(
     'octez.connect-sdk-channel',
     this.onBCMessageHandler.bind(this),
     this.onElectedLeaderhandler.bind(this)
@@ -295,16 +305,23 @@ export class DAppClient extends Client {
     this.storageValidator = new StorageValidator(this.storage)
 
     this.enableAppSwitching =
-      config.enableAppSwitching === undefined ? true : !!config.enableAppSwitching
+      config.enableAppSwitching === undefined ? true : Boolean(config.enableAppSwitching)
 
     this.enableMetrics = config.enableMetrics ? true : false
 
     this.requiredMinimumVersion = resolveRequiredMinimumVersion(config.requiredMinimumVersion)
 
+    // Tezos is the default chain: the wrapped-only pipeline routes every
+    // request/response through the registry handler, so registration is no
+    // longer a consumer obligation. addBlockchain stays public — a later
+    // registration under 'tezos' overrides this default.
+    this.addBlockchain(new TezosBlockchain())
+
     // Subscribe to storage changes and update the active account if it changes on other tabs
     this.storage.subscribeToStorageChanged(async (event) => {
       if (event.eventType === 'storageCleared') {
         this.setActiveAccount(undefined)
+
         return
       }
       if (event.eventType === 'entryModified') {
@@ -316,16 +333,19 @@ export class DAppClient extends Client {
             const account = await this.getAccount(accountIdentifier)
             this.setActiveAccount(account)
           }
+
           return
         }
         if (event.key === this.storage.getPrefixedKey(StorageKey.ENABLE_METRICS)) {
-          this.enableMetrics = !!(await this.storage.get(StorageKey.ENABLE_METRICS))
+          this.enableMetrics = Boolean(await this.storage.get(StorageKey.ENABLE_METRICS))
+
           return
         }
         if (event.key === this.storage.getPrefixedKey(StorageKey.BEACON_SDK_SECRET_SEED)) {
           this._keyPair = new ExposedPromise()
           this._beaconId = new ExposedPromise()
           await this.initSDK()
+
           return
         }
       }
@@ -337,9 +357,11 @@ export class DAppClient extends Client {
         if (activeAccountIdentifier) {
           const account = await this.accountManager.getAccount(activeAccountIdentifier)
           await this.setActiveAccount(account)
+
           return account
         } else {
           await this.setActiveAccount(undefined)
+
           return undefined
         }
       })
@@ -347,31 +369,47 @@ export class DAppClient extends Client {
         logger.error(storageError)
         await this.resetInvalidState(false)
         this.events.emit(BeaconEvent.INVALID_ACCOUNT_DEACTIVATED)
+
         return undefined
       })
 
     this.handleResponse = async (
-      message: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>,
+      wireMessage: BeaconMessage | BeaconMessageWrapper<BeaconBaseMessage>,
       connectionInfo: ConnectionContext
     ): Promise<void> => {
-      const typedMessage = usesWrappedMessages(message.version)
-        ? (message as BeaconMessageWrapper<BeaconBaseMessage>).message
-        : (message as BeaconMessage)
+      // Negotiated wire: a flat arrival is the legacy v2 dialect (from a
+      // v4.8.x wallet answering a flat request) and is already the shape the
+      // pipeline consumes. Wrapped arrivals carry Tezos payloads that are
+      // normalized back to those same flat shapes — the wire dialect stays
+      // invisible to integrators. Non-Tezos wrapped payloads keep the
+      // pass-through of the generic permissionRequest/request API.
+      const isWrapped = usesWrappedMessages(wireMessage.version)
 
       // Issue #33: a V3-versioned message can arrive without its wrapped payload.
       // Drop it safely instead of dereferencing an undefined payload, which would
       // throw an unhandled rejection inside the transport subscription callback.
-      if (usesWrappedMessages(message.version) && !typedMessage) {
-        logger.log('handleResponse', 'Received wrapped message with undefined payload; dropping', message)
+      if (isWrapped && !(wireMessage as BeaconMessageWrapper<BeaconBaseMessage>).message) {
+        logger.log(
+          'handleResponse',
+          'Received wrapped message with undefined payload; dropping',
+          wireMessage
+        )
 
         return
       }
 
-      let appMetadata: AppMetadata | undefined = usesWrappedMessages(message.version)
-        ? (typedMessage as unknown as PermissionResponseV3<string>).blockchainData?.appMetadata
-        : (typedMessage as PermissionResponse).appMetadata
+      const normalized = isWrapped
+        ? this.normalizeWrappedTezosMessage(wireMessage as BeaconMessageWrapper<BeaconBaseMessage>)
+        : (wireMessage as BeaconMessage)
+      const message = normalized ?? wireMessage
+      const typedMessage =
+        normalized ?? (wireMessage as BeaconMessageWrapper<BeaconBaseMessage>).message
 
-      if (!appMetadata && usesWrappedMessages(message.version)) {
+      let appMetadata: AppMetadata | undefined = normalized
+        ? (typedMessage as PermissionResponse).appMetadata
+        : (typedMessage as unknown as PermissionResponseV3).blockchainData?.appMetadata
+
+      if (!appMetadata && !normalized) {
         const storedMetadata = await Promise.all([
           this.storage.get(StorageKey.TRANSPORT_P2P_PEERS_DAPP),
           this.storage.get(StorageKey.TRANSPORT_WALLETCONNECT_PEERS_DAPP),
@@ -397,10 +435,15 @@ export class DAppClient extends Client {
       }
 
       if (this.openRequestsOtherTabs.has(message.id)) {
+        // Relay the ORIGINAL wrapped envelope, not the normalized flat
+        // message: the receiving tab funnels this straight back into its own
+        // handleResponse, whose wrapped-only contract would drop a flat
+        // arrival (version '4' with no `.message` payload) and leave the
+        // other tab's request pending forever.
         this.multiTabChannel.postMessage({
           type: 'RESPONSE',
           data: {
-            message,
+            message: wireMessage,
             connectionInfo
           },
           id: message.id
@@ -546,7 +589,7 @@ export class DAppClient extends Client {
       .catch((err) => logger.error(err.message))
 
     this.sendMetrics(
-      'enable-metrics?' + this.addQueryParam('version', SDK_VERSION),
+      `enable-metrics?${  this.addQueryParam('version', SDK_VERSION)}`,
       undefined,
       (res) => {
         if (!res.ok) {
@@ -664,6 +707,7 @@ export class DAppClient extends Client {
 
     if (id) {
       this.userId = id
+
       return
     }
 
@@ -721,6 +765,13 @@ export class DAppClient extends Client {
         },
         this.checkIfBCLeaderExists.bind(this)
       )
+
+      // Apply proposal networks requested before the transport existed
+      // (requestPermissions runs before init creates the transport).
+      if (this.pendingWcProposalNetworks) {
+        this.walletConnectTransport.setProposalNetworks(this.pendingWcProposalNetworks)
+        this.pendingWcProposalNetworks = undefined
+      }
 
       this.initEvents()
 
@@ -998,6 +1049,7 @@ export class DAppClient extends Client {
               }, 1000)
               abortHandler()
               resolve('')
+
               return
             }
             resolve(await serializer.serialize(await p2pTransport.getPairingRequestInfo()))
@@ -1046,6 +1098,7 @@ export class DAppClient extends Client {
 
   private async isInvalidState(account: AccountInfo) {
     const activeAccount = await this._activeAccount.promise
+
     return !activeAccount
       ? false
       : activeAccount?.address !== account?.address && !this.isGetActiveAccountHandled
@@ -1085,6 +1138,7 @@ export class DAppClient extends Client {
 
       if (tranport instanceof WalletConnectTransport && tranport.wasDisconnectedByWallet()) {
         await this.resetInvalidState()
+
         return
       }
     }
@@ -1118,7 +1172,9 @@ export class DAppClient extends Client {
               errorType: BeaconErrorType.ABORTED_ERROR,
               id,
               senderId: '',
-              version: '2'
+              // SDK-synthesized rejection consumed in-process (never hits the
+              // wire); stamped with the wrapped baseline for consistency.
+              version: negotiateEnvelopeVersion(undefined)
             })
           })
         this.openRequests.clear()
@@ -1138,6 +1194,7 @@ export class DAppClient extends Client {
 
       if (transport instanceof WalletConnectTransport && transport.wasDisconnectedByWallet()) {
         await this.resetInvalidState()
+
         return
       }
     }
@@ -1250,7 +1307,7 @@ export class DAppClient extends Client {
   }
 
   private addQueryParam(paramName: string, paramValue: string): string {
-    return paramName + '=' + paramValue
+    return `${paramName  }=${  paramValue}`
   }
 
   private async buildPayload(
@@ -1496,15 +1553,15 @@ export class DAppClient extends Client {
   }
 
   public async permissionRequest(
-    input: PermissionRequestV3<string>
-  ): Promise<PermissionResponseV3<string>> {
+    input: PermissionRequestV3
+  ): Promise<PermissionResponseV3> {
     logger.log('permissionRequest', input)
     const blockchain = this.blockchains.get(input.blockchainIdentifier)
     if (!blockchain) {
       throw new Error(`Blockchain "${input.blockchainIdentifier}" not supported by dAppClient`)
     }
 
-    const request: PermissionRequestV3<string> = {
+    const request: PermissionRequestV3 = {
       ...input,
       type: BeaconMessageType.PermissionRequest,
       blockchainData: {
@@ -1522,8 +1579,8 @@ export class DAppClient extends Client {
 
     const { message: response, connectionInfo } = await this.requireResponse(
       this.makeRequestV3<
-        PermissionRequestV3<string>,
-        BeaconMessageWrapper<PermissionResponseV3<string>>
+        PermissionRequestV3,
+        BeaconMessageWrapper<PermissionResponseV3>
       >(request),
       request as any,
       logId
@@ -1599,7 +1656,7 @@ export class DAppClient extends Client {
     return response.message
   }
 
-  public async request(input: BlockchainRequestV3<string>): Promise<BlockchainResponseV3<string>> {
+  public async request(input: BlockchainRequestV3): Promise<BlockchainResponseV3> {
     logger.log('request', input)
     const blockchain = this.blockchains.get(input.blockchainIdentifier)
     if (!blockchain) {
@@ -1613,7 +1670,7 @@ export class DAppClient extends Client {
       throw await this.sendInternalError('No active account!')
     }
 
-    const request: BlockchainRequestV3<string> = {
+    const request: BlockchainRequestV3 = {
       ...input,
       type: BeaconMessageType.BlockchainRequest,
       accountId: activeAccount.accountIdentifier
@@ -1625,8 +1682,8 @@ export class DAppClient extends Client {
     logger.time(true, logId)
     const res = (await this.checkMakeRequest())
       ? this.makeRequestV3<
-          BlockchainRequestV3<string>,
-          BeaconMessageWrapper<BlockchainResponseV3<string>>
+          BlockchainRequestV3,
+          BeaconMessageWrapper<BlockchainResponseV3>
         >(request)
       : this.makeRequestBC<any, any>(request)
 
@@ -1696,6 +1753,34 @@ export class DAppClient extends Client {
         ).values()
       )
       request.networks = dedupedNetworks
+
+      // Multi-network over WalletConnect travels via the session proposal,
+      // not the wire payload (WC peers have no beacon version handshake).
+      // Map each requested chain id to its named network for the proposal;
+      // ids without a static genesis mapping are skipped here (the
+      // NetworksUnsupportedBeaconError guard above reports them when the
+      // dApp opted into requiredMinimumVersion '4').
+      const proposalNetworkTypes: NetworkType[] = []
+      for (const { chainId } of dedupedNetworks) {
+        const networkType = networkTypeFromTezosCaip2(chainId)
+        if (networkType === undefined) {
+          logger.debug(
+            'requestPermissions',
+            `No static network mapping for "${chainId}"; excluded from the WalletConnect proposal`
+          )
+          continue
+        }
+        proposalNetworkTypes.push(networkType)
+      }
+
+      if (this.walletConnectTransport) {
+        this.walletConnectTransport.setProposalNetworks(proposalNetworkTypes)
+      } else {
+        // The WalletConnect transport is created lazily inside init() (run
+        // by makeRequest below, before the pairing proposal is built); stash
+        // the networks and apply them right after creation.
+        this.pendingWcProposalNetworks = proposalNetworkTypes
+      }
     }
 
     this.analytics.track('event', 'DAppClient', 'Permission requested')
@@ -1823,14 +1908,14 @@ export class DAppClient extends Client {
     const activeAccount = await this.getActiveAccount()
 
     if (!activeAccount)
-      throw new Error('Please request permissions before doing a proof of event challenge')
+      {throw new Error('Please request permissions before doing a proof of event challenge')}
     if (
       activeAccount.walletType !== 'abstracted_account' &&
       activeAccount.verificationType !== 'proof_of_event'
     )
-      throw new Error(
+      {throw new Error(
         'This wallet is not an abstracted account and thus cannot perform proof of event'
-      )
+      )}
 
     const request: ProofOfEventChallengeRequestInput = {
       type: BeaconMessageType.ProofOfEventChallengeRequest,
@@ -1881,7 +1966,7 @@ export class DAppClient extends Client {
     const activeAccount = await this.getActiveAccount()
 
     if (!activeAccount)
-      throw new Error('Please request permissions before doing a proof of event challenge')
+      {throw new Error('Please request permissions before doing a proof of event challenge')}
     if (
       activeAccount.walletType !== 'abstracted_account' &&
       activeAccount.verificationType !== 'proof_of_event'
@@ -2296,7 +2381,7 @@ export class DAppClient extends Client {
         logger.time(false, logId)
         throw error
       }
-      const errorResponse = error as ErrorResponse
+      const errorResponse = error
       errorResponse.errorType === BeaconErrorType.ABORTED_ERROR
         ? this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'abort'))
         : this.sendMetrics('performance-metrics/save', await this.buildPayload('message', 'error'))
@@ -2523,10 +2608,11 @@ export class DAppClient extends Client {
       app: AppBase | undefined
       type: 'extension' | 'mobile' | 'web' | 'desktop' | undefined
     } => {
-      if (isBrowser(window) && browser) return { app: browser, type: 'web' }
-      if (isDesktop(window) && desktop) return { app: desktop, type: 'desktop' }
-      if (isBrowser(window) && extension) return { app: extension, type: 'extension' }
-      if (mobile) return { app: mobile, type: 'mobile' }
+      if (isBrowser(window) && browser) {return { app: browser, type: 'web' }}
+      if (isDesktop(window) && desktop) {return { app: desktop, type: 'desktop' }}
+      if (isBrowser(window) && extension) {return { app: extension, type: 'extension' }}
+      if (mobile) {return { app: mobile, type: 'mobile' }}
+
       return { app: undefined, type: undefined }
     }
 
@@ -2683,6 +2769,142 @@ export class DAppClient extends Client {
    * @param skipResponse If true, the function return as soon as the message is sent
    */
 
+  // Maps each flat Tezos request type to its wrapped blockchainData
+  // discriminator + scope (the pre-fork flat wire strings, kept verbatim;
+  // mirrored by the wallet-side flat-output normalization).
+  private static readonly FLAT_REQUEST_PAYLOAD_TYPES: Partial<
+    Record<BeaconMessageType, { type: string; scope: string }>
+  > = {
+    [BeaconMessageType.OperationRequest]: { type: 'operation_request', scope: 'operation_request' },
+    [BeaconMessageType.SignPayloadRequest]: { type: 'sign_payload_request', scope: 'sign' },
+    [BeaconMessageType.BroadcastRequest]: { type: 'broadcast_request', scope: 'broadcast' },
+    [BeaconMessageType.ProofOfEventChallengeRequest]: {
+      type: 'proof_of_event_challenge_request',
+      scope: 'proof_of_event'
+    },
+    [BeaconMessageType.SimulatedProofOfEventChallengeRequest]: {
+      type: 'simulated_proof_of_event_challenge_request',
+      scope: 'proof_of_event'
+    }
+  }
+
+  // Wrapped Tezos response blockchainData discriminators → the flat
+  // BeaconMessageType the request* methods (and integrators) consume.
+  private static readonly TEZOS_PAYLOAD_TO_FLAT_TYPE: Record<string, BeaconMessageType> = {
+    operation_response: BeaconMessageType.OperationResponse,
+    sign_payload_response: BeaconMessageType.SignPayloadResponse,
+    broadcast_response: BeaconMessageType.BroadcastResponse,
+    proof_of_event_challenge_response: BeaconMessageType.ProofOfEventChallengeResponse,
+    simulated_proof_of_event_challenge_response:
+      BeaconMessageType.SimulatedProofOfEventChallengeResponse
+  }
+
+  private static readonly TEZOS_IDENTIFIERS: readonly string[] = ['tezos', 'xtz']
+
+  // Build the wrapped Tezos wire message for a flat request input. The v4
+  // multi-network `networks` field is stripped for peers negotiated below
+  // v4 — a v3 peer must never see v4 payload fields.
+  private wrapTezosRequest(
+    flat: { type: BeaconMessageType } & Record<string, unknown>,
+    envelope: { id: string; version: string; senderId: string },
+    account?: AccountInfo
+  ): BeaconMessageWrapper<BlockchainMessage> {
+    if (flat.type === BeaconMessageType.PermissionRequest) {
+      const blockchainData = { ...flat } as Record<string, unknown>
+      delete blockchainData.type
+      if (!isMultiNetworkVersion(envelope.version)) {
+        delete blockchainData.networks
+      }
+
+      return wrapBeaconMessage(envelope, {
+        blockchainIdentifier: 'tezos',
+        type: BeaconMessageType.PermissionRequest,
+        blockchainData
+      })
+    }
+
+    const payloadMeta = DAppClient.FLAT_REQUEST_PAYLOAD_TYPES[flat.type]
+    if (!payloadMeta) {
+      throw new Error(`Cannot send a "${flat.type}" message: not a Tezos request type`)
+    }
+
+    const payload = { ...flat } as Record<string, unknown>
+    delete payload.type
+
+    return wrapBeaconMessage(envelope, {
+      blockchainIdentifier: 'tezos',
+      type: BeaconMessageType.BlockchainRequest,
+      accountId: account?.accountIdentifier ?? '',
+      blockchainData: {
+        type: payloadMeta.type,
+        scope: payloadMeta.scope,
+        ...payload
+      }
+    })
+  }
+
+  // Normalize a wrapped Tezos wire message back to the flat shape the
+  // pre-fork pipeline (request* methods, onNewAccount, integrator events)
+  // consumes. Returns undefined for non-Tezos payloads, which keep the
+  // wrapped pass-through of the generic permissionRequest/request API.
+  private normalizeWrappedTezosMessage(
+    wrapper: BeaconMessageWrapper<BeaconBaseMessage>
+  ): BeaconMessage | undefined {
+    const inner = wrapper.message as unknown as {
+      type: BeaconMessageType
+      blockchainIdentifier?: string
+      blockchainData?: Record<string, unknown>
+      error?: { type?: unknown; data?: unknown }
+      description?: string
+    }
+    const envelope = { id: wrapper.id, version: wrapper.version, senderId: wrapper.senderId }
+
+    // Chain-agnostic control messages.
+    if (inner.type === BeaconMessageType.Acknowledge || inner.type === BeaconMessageType.Disconnect) {
+      return { ...envelope, type: inner.type }
+    }
+    if (inner.type === BeaconMessageType.Error) {
+      return {
+        ...envelope,
+        type: BeaconMessageType.Error,
+        errorType: (inner.error?.type as BeaconErrorType) ?? BeaconErrorType.UNKNOWN_ERROR,
+        errorData: inner.error?.data,
+        description: inner.description
+      }
+    }
+
+    if (
+      inner.blockchainIdentifier === undefined ||
+      !DAppClient.TEZOS_IDENTIFIERS.includes(inner.blockchainIdentifier)
+    ) {
+      return undefined
+    }
+
+    if (
+      inner.type === BeaconMessageType.PermissionResponse ||
+      inner.type === BeaconMessageType.ChangeAccountRequest
+    ) {
+      return { ...envelope, type: inner.type, ...(inner.blockchainData ?? {}) } as BeaconMessage
+    }
+
+    if (inner.type === BeaconMessageType.BlockchainResponse) {
+      const payloadType = inner.blockchainData?.type
+      const flatType =
+        typeof payloadType === 'string'
+          ? DAppClient.TEZOS_PAYLOAD_TO_FLAT_TYPE[payloadType]
+          : undefined
+      if (!flatType) {
+        return undefined
+      }
+      const payload = { ...(inner.blockchainData ?? {}) }
+      delete payload.type
+
+      return { ...envelope, type: flatType, ...payload } as BeaconMessage
+    }
+
+    return undefined
+  }
+
   private makeRequest<T extends BeaconRequestInputMessage, U extends BeaconMessage>(
     requestInput: Optional<T, IgnoredRequestInputProperties>,
     skipResponse?: undefined | false,
@@ -2696,7 +2918,7 @@ export class DAppClient extends Client {
     skipResponse: true,
     otherTabMessageId?: string
   ): Promise<undefined>
-  private async makeRequest<T extends BeaconRequestInputMessage, U extends BeaconMessage>(
+  private async makeRequest<T extends BeaconRequestInputMessage>(
     requestInput: Optional<T, IgnoredRequestInputProperties>,
     skipResponse?: boolean,
     otherTabMessageId?: string
@@ -2740,12 +2962,39 @@ export class DAppClient extends Client {
       throw await this.sendInternalError('octez.connect ID not defined')
     }
 
-    const request: Optional<T, IgnoredRequestInputProperties> &
-      Pick<U, IgnoredRequestInputProperties> = {
-      id: messageId,
-      version: '2', // This is the old version
-      senderId: await getSenderId(await this.beaconId),
-      ...requestInput
+    const account = await this.getActiveAccount()
+
+    const peer = await this.getPeer(account)
+
+    // Enforce the dApp's required minimum before a request leaves the SDK.
+    // No-op under the default (permissive) minimum; otherwise rejects an
+    // under-minimum wallet with VersionUnsupportedBeaconError.
+    this.assertWalletVersionMeetsMinimum(peer?.version)
+
+    // The wire dialect is negotiated per peer — min(peer.version,
+    // BEACON_VERSION), floor '2'. A wrapped-capable peer (>= 3) receives the
+    // flat requestInput (the unchanged public shape) mapped onto the wrapped
+    // Tezos payload; a legacy peer receives the flat v2 message it has
+    // always spoken. Integrators never see either dialect.
+    const negotiatedVersion = negotiateEnvelopeVersion(peer?.version)
+    const requestSenderId = await getSenderId(await this.beaconId)
+
+    let request: BeaconMessageWrapper<BlockchainMessage> | BeaconMessage
+    if (usesWrappedMessages(negotiatedVersion)) {
+      const wrapped = this.wrapTezosRequest(
+        requestInput,
+        { id: messageId, version: negotiatedVersion, senderId: requestSenderId },
+        account
+      )
+      await this.blockchains.get('tezos')?.validateRequest(wrapped.message)
+      request = wrapped
+    } else {
+      request = {
+        id: messageId,
+        version: negotiatedVersion,
+        senderId: requestSenderId,
+        ...requestInput
+      } as unknown as BeaconMessage
     }
 
     let exposed
@@ -2762,15 +3011,6 @@ export class DAppClient extends Client {
       this.addOpenRequest(request.id, exposed)
     }
 
-    const account = await this.getActiveAccount()
-
-    const peer = await this.getPeer(account)
-
-    // Enforce the dApp's required minimum before a request leaves the SDK.
-    // No-op under the default (permissive) minimum; otherwise rejects an
-    // under-minimum wallet with VersionUnsupportedBeaconError.
-    this.assertWalletVersionMeetsMinimum(peer?.version)
-
     const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
 
     const walletInfo = await this.getWalletInfo(peer, account)
@@ -2783,7 +3023,7 @@ export class DAppClient extends Client {
       }
       ;(await this.transport).send(payload, peer)
       if (
-        request.type !== BeaconMessageType.PermissionRequest ||
+        requestInput.type !== BeaconMessageType.PermissionRequest ||
         (this._activeAccount.isResolved() && (await this._activeAccount.promise))
       ) {
         this.tryToAppSwitch()
@@ -2839,8 +3079,8 @@ export class DAppClient extends Client {
    * @param account The account that the message will be sent to
    */
   private async makeRequestV3<
-    T extends BlockchainMessage<string>,
-    U extends BeaconMessageWrapper<BlockchainMessage<string>>
+    T extends BlockchainMessage,
+    U extends BeaconMessageWrapper<BlockchainMessage>
   >(
     requestInput: T,
     otherTabMessageId?: string
@@ -2880,13 +3120,20 @@ export class DAppClient extends Client {
       throw await this.sendInternalError('octez.connect ID not defined')
     }
 
+    const account = await this.getActiveAccount()
+
+    const peer = await this.getPeer(account)
+
+    // Enforce the dApp's required minimum before a request leaves the SDK.
+    this.assertWalletVersionMeetsMinimum(peer?.version)
+
     const request: BeaconMessageWrapper<BlockchainMessage> = {
       id: messageId,
-      // Stamp the SDK's actual protocol version on the wrapped envelope so the
-      // wallet routes on the real peer.version (v4 wallets reach their
-      // multi-network branch). Backward compatible: a v3 wallet treats any
-      // version >= 3 as a wrapped message.
-      version: BEACON_VERSION,
+      // The envelope carries the version negotiated against the peer:
+      // min(peer.version, BEACON_VERSION), floor '3'. A v3 wallet treats any
+      // version >= 3 as a wrapped message; a v4 wallet reaches its
+      // multi-network branch only when it declared v4 at pairing.
+      version: negotiateEnvelopeVersion(peer?.version),
       senderId: await getSenderId(await this.beaconId),
       message: requestInput
     }
@@ -2900,13 +3147,6 @@ export class DAppClient extends Client {
     >()
 
     this.addOpenRequest(request.id, exposed)
-
-    const account = await this.getActiveAccount()
-
-    const peer = await this.getPeer(account)
-
-    // Enforce the dApp's required minimum before a request leaves the SDK.
-    this.assertWalletVersionMeetsMinimum(peer?.version)
 
     const payload = await new Serializer(this.getPeerProtocolVersion(peer)).serialize(request)
 
@@ -3125,7 +3365,7 @@ export class DAppClient extends Client {
     ].join(' ')
 
     const bytes = toHex(constructedString)
-    const payloadBytes = '05' + '01' + bytes.length.toString(16).padStart(8, '0') + bytes
+    const payloadBytes = `05` + `01${  bytes.length.toString(16).padStart(8, '0')  }${bytes}`
 
     const signature = await signMessage(payloadBytes, {
       secretKey: Buffer.from(keypair.secretKey)
