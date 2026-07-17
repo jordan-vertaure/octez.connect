@@ -21,20 +21,38 @@ import {
   normalizeTezosCaip2
 } from '@tezos-x/octez.connect-core'
 import {
+  fetchWalletListsFromGitHub,
+  WalletLists,
   CONTRACT_PREFIX,
   getAddressFromPublicKey,
   isValidAddress,
   loadWalletLists,
   prefixPublicKey
 } from '@tezos-x/octez.connect-utils'
-import bundledTezosRegistry from '@tezos-x/octez.connect-ui/data/tezos.json'
+import { bundledWalletRegistry as bundledTezosRegistry } from './data/bundled-wallet-registry'
 import { TezosMessageType } from './types/message-type'
 import {
   TezosBlockchainRequest,
   TezosPermissionResponseBlockchainData
 } from './types/messages'
 
-const { desktopList, extensionList, iOSList, webList } = loadWalletLists(bundledTezosRegistry)
+let walletListsPromise: Promise<WalletLists> | undefined
+
+// Fetch-first with bundled fallback: the live list comes from the
+// wallet-list repo's CDN, so new wallets reach dApps without an SDK
+// release; the generated snapshot keeps the alert working offline. A
+// failed fetch is not cached, so the next call retries.
+const resolveWalletLists = (): Promise<WalletLists> => {
+  walletListsPromise ??= fetchWalletListsFromGitHub('tezos').then((registry) => {
+    if (registry === null) {
+      walletListsPromise = undefined
+    }
+
+    return loadWalletLists(registry ?? bundledTezosRegistry)
+  })
+
+  return walletListsPromise
+}
 
 const logger = new Logger('TezosBlockchain')
 
@@ -170,12 +188,7 @@ export class TezosBlockchain implements Blockchain {
     webList: WebApp[]
     iOSList: App[]
   }> {
-    return {
-      extensionList: extensionList,
-      desktopList: desktopList,
-      webList: webList,
-      iOSList: iOSList
-    }
+    return resolveWalletLists()
   }
 
   async getAccountInfosFromPermissionResponse(
