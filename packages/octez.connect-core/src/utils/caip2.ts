@@ -55,9 +55,9 @@ export const networkFromTezosCaip2 = (
  * (P2P/postmessage):
  * - WEEKLYNET / DAILYNET rotate their genesis on every reset.
  * - CUSTOM has no fixed genesis by definition.
- * - TALLINNNET / SEOULNET / TEZLINK_SHADOWNET / TEZOSX_PREVIEWNET currently
- *   publish no queryable RPC in the teztnets registry; add their ids here
- *   (RPC-sourced) when available.
+ * - TALLINNNET / SEOULNET / TEZLINK_SHADOWNET / TEZOSX_PREVIEWNET /
+ *   TEZOSX_SHADOWNET currently publish no queryable RPC in the teztnets
+ *   registry; add their ids here (RPC-sourced) when available.
  * If a long-running network relaunches with a new genesis, its entry must be
  * updated in the same change that bumps the supported network.
  */
@@ -65,6 +65,10 @@ export const TEZOS_NETWORK_GENESIS_IDS: Partial<Record<NetworkType, string>> = {
   [NetworkType.MAINNET]: 'NetXdQprcVkpaWU',
   [NetworkType.GHOSTNET]: 'NetXnHfVqm9iesp',
   [NetworkType.SHADOWNET]: 'NetXsqzbfFenSTS',
+  // Tezos X L2 (Michelson runtime) mainnet. Maintainer-supplied id — no
+  // public RPC was reachable at the time of adding; re-verify against
+  // `/chains/main/chain_id` once one ships.
+  [NetworkType.TEZOSX_MAINNET]: 'NetXohUVN5QWR4f',
   [NetworkType.USHUAIANET]: 'NetXpX8WSZkAZZA'
 }
 

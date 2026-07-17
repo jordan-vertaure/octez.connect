@@ -243,12 +243,18 @@ RPC‑sourced and locked by unit test):
 | `mainnet` | `NetXdQprcVkpaWU` |
 | `ghostnet` | `NetXnHfVqm9iesp` |
 | `shadownet` | `NetXsqzbfFenSTS` |
+| `tezosx-mainnet` | `NetXohUVN5QWR4f` |
 | `ushuaianet` | `NetXpX8WSZkAZZA` |
+
+`tezosx-mainnet` is the Tezos X L2 (Michelson runtime) — the same Tezos
+smart-contract language, so it needs no separate blockchain handler; it is
+addressed like any other Tezos chain by its CAIP‑2 id.
 
 `weeklynet`/`dailynet` (rotating genesis), `custom`, and networks without a
 public RPC (`tallinnnet`, `seoulnet`, `tezlink-shadownet`,
-`tezosx-previewnet`) are not statically mappable — multi-network requests for
-them travel over P2P/postmessage only (chain ids pass through opaquely).
+`tezosx-previewnet`, `tezosx-shadownet`) are not statically mappable —
+multi-network requests for them travel over P2P/postmessage only (chain ids
+pass through opaquely).
 `disableWalletConnect?: boolean` **already existed in v4.8.6** — it is not new;
 only its interaction with the WC opt‑in default changed (see §2.1).
 
