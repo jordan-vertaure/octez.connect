@@ -20,7 +20,7 @@ import { Logger } from '../../utils/Logger'
 import { ClientOptions } from './ClientOptions'
 import { Transport } from '../../transports/Transport'
 import { Serializer } from '../../Serializer'
-import { buildDisconnectMessage } from '../../utils/message-utils'
+import { buildDisconnectMessage, effectivePeerVersion } from '../../utils/message-utils'
 import { getPreferredMessageProtocolVersion } from '../../message-protocol'
 
 const logger = new Logger('Client')
@@ -288,7 +288,7 @@ export abstract class Client extends BeaconClient {
     // The disconnect ships in the peer's negotiated dialect: wrapped for
     // v3+ peers, the flat legacy shape for v2 peers (which would silently
     // ignore a wrapped envelope).
-    const request = buildDisconnectMessage({ id, senderId }, peer.version)
+    const request = buildDisconnectMessage({ id, senderId }, effectivePeerVersion(peer))
 
     const protocolVersion = this.getPeerProtocolVersion(peer)
     const payload = await new Serializer(protocolVersion).serialize(request)

@@ -21,23 +21,46 @@ single‑network (legacy) accounts.
 
 ## 1. Interop / backward‑compatibility matrix
 
+> ⚠️ **Known issue in v5.0.0 / v5.0.1:** the "v5 dApp ↔ pre‑v5 wallet" row of
+> this matrix did **not** hold in those releases. Pairing appears to succeed,
+> then the wallet waits forever for a permission request that never surfaces
+> (verified against `@tezos-x/octez.connect-wallet@4.8.6` and
+> `@airgap/beacon-wallet@4.8.x`, i.e. wallets like Kukai). Cause: legacy
+> wallets do not declare their own version at pairing — they **echo the
+> version field of the dApp's pairing request back**, so a v5 dApp read its
+> own `'4'` as the wallet's version and served a wrapped v4 envelope the
+> legacy SDK silently drops. Fixed from **v5.0.2**: capability negotiation
+> now keys on the v5‑only `protocolVersion` pairing marker (see below), which
+> legacy wallets never send and cannot echo. **dApps must upgrade to ≥ 5.0.2**
+> — there is no dApp‑side workaround on 5.0.0/5.0.1, and wallet‑side the only
+> alternative is the wallet upgrading to v5.
+
+Verified matrix (octez.connect ≥ 5.0.2 on the dApp side):
+
 | dApp | Wallet | Result |
 |------|--------|--------|
 | **v4.8.6** | **v5** | ✅ Works. The v5 wallet routes on the incoming message version and serves the old dApp with the classic single‑account flow. |
-| **v5** | **v4.8.6** | ✅ Works. The v5 dApp detects the wallet is pre‑v4 (via `peer.version`) and transparently uses the legacy single‑network flow. |
+| **≥ v5.0.2** | **v4.8.6 / airgap 4.8.x (e.g. Kukai)** | ✅ Works. The dApp detects the wallet is legacy (no `protocolVersion` pairing marker) and transparently uses the legacy flat‑v2 single‑network flow. |
+| **v5.0.0 / v5.0.1** | **v4.8.6 / airgap 4.8.x** | ❌ **Broken** — silent hang after pairing (see the warning above). Upgrade the dApp to ≥ 5.0.2. |
 | **v5** | **v5** | ✅ Full multi-network. |
 | **v4.8.6** | **v4.8.6** | ✅ Unchanged. |
 
-**How the handshake works:** each peer advertises its protocol version at
-pairing time (`peer.version`), and every outgoing message is stamped with the
-negotiated dialect — `min(peer.version, '4')`, floor `'2'`. A v4.8.6 peer is
-served the flat v2 wire it has always spoken; wrapped-capable peers exchange
-v3/v4 envelopes; the dApp only uses multi-network features when the wallet
-advertises version ≥ 4. Malformed or absent versions are always treated as
-"below v4" (and served the flat dialect), so a hostile or legacy peer can
-never trip the new code paths. WalletConnect peers carry **no** beacon
-version (never fabricated); their multi-network capability is negotiated via
-session namespaces instead (see §3).
+**How the handshake works:** a v5 peer attaches a `protocolVersion` marker to
+its pairing response (on every transport that can carry one); that marker is
+the capability signal. The peer's *effective* version is its declared
+`peer.version` **only when the marker is present**; peers without the marker
+are treated as legacy `'2'` speakers no matter what their `version` field
+says — because legacy SDKs echo the requester's version rather than declaring
+their own, `peer.version` alone is unusable for negotiation. Every outgoing
+message is then stamped with the negotiated dialect —
+`min(effectiveVersion, '4')`, floor `'2'`. A legacy peer is served the flat
+v2 wire it has always spoken; marker‑carrying peers exchange wrapped v3/v4
+envelopes; the dApp only uses multi-network features when the wallet's
+effective version is ≥ 4. Malformed or absent versions and markers are always
+treated as "legacy" (and served the flat dialect), so a hostile or legacy
+peer can never trip the new code paths. WalletConnect peers carry **no**
+beacon version (never fabricated); their multi-network capability is
+negotiated via session namespaces instead (see §3).
 
 **Graceful degradation (important nuance):** by default a v5 dApp that requests
 multiple networks from a **v4.8.6 wallet** receives a **single** account (the
@@ -50,8 +73,10 @@ silently degrading.
 
 ## 2. The minimum upgrade (no new features)
 
-Bump every `@tezos-x/octez.connect-*` dependency from `4.8.6` to
-`5.0.0-beta.x`, then apply the required edits below. These are **breaking
+Bump every `@tezos-x/octez.connect-*` dependency from `4.8.6` to the latest
+`5.0.x` — **dApps must use ≥ 5.0.2**; 5.0.0/5.0.1 dApps cannot talk to
+pre-v5 wallets (see the known issue in §1). Then apply the required edits
+below. These are **breaking
 changes independent of multi-network** — you must handle them even if you never
 touch a second network.
 
@@ -282,5 +307,5 @@ transparent to integrators.
 
 ---
 
-*Applies to `@tezos-x/octez.connect-*` `5.0.0-beta.x`. Package names and Node/npm
-engine requirements are unchanged from v4.8.6.*
+*Applies to `@tezos-x/octez.connect-*` `5.0.x` (dApps: ≥ `5.0.2`, see §1).
+Package names and Node/npm engine requirements are unchanged from v4.8.6.*
