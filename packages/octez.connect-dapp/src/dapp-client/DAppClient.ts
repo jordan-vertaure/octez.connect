@@ -109,6 +109,7 @@ import {
   networkTypeFromTezosCaip2,
   resolveRequiredMinimumVersion,
   negotiateEnvelopeVersion,
+  effectivePeerVersion,
   wrapBeaconMessage
 } from '@tezos-x/octez.connect-core'
 import { TezosBlockchain } from '@tezos-x/octez.connect-blockchain-tezos'
@@ -1595,7 +1596,7 @@ export class DAppClient extends Client {
     // reading response.message.version would always miss and collapse to '0',
     // misrouting v4 responses when no peer is persisted yet.
     const walletPeerV3 = await this.getPeer()
-    const walletPeerVersionV3: string = walletPeerV3?.version ?? response.version
+    const walletPeerVersionV3: string = effectivePeerVersion(walletPeerV3) ?? response.version
     const partialAccountInfos = await blockchain.getAccountInfosFromPermissionResponse(
       response.message,
       walletPeerVersionV3
@@ -1802,10 +1803,11 @@ export class DAppClient extends Client {
     logger.log('requestPermissions', '######## MESSAGE #######')
     logger.log('requestPermissions', message)
 
-    // walletPeer.version is the negotiated pairing version; fall back to the
-    // response envelope version when no peer is persisted yet.
+    // Capability-aware peer version (legacy wallets echo the dApp's version
+    // at pairing — see effectivePeerVersion); fall back to the response
+    // envelope version when no peer is persisted yet.
     const walletPeer = await this.getPeer()
-    const walletPeerVersion = walletPeer?.version ?? message.version
+    const walletPeerVersion = effectivePeerVersion(walletPeer) ?? message.version
 
     // Gate the freshly-paired wallet against the dApp's required minimum (a
     // no-op under the default, permissive minimum). Throws
@@ -2969,14 +2971,17 @@ export class DAppClient extends Client {
     // Enforce the dApp's required minimum before a request leaves the SDK.
     // No-op under the default (permissive) minimum; otherwise rejects an
     // under-minimum wallet with VersionUnsupportedBeaconError.
-    this.assertWalletVersionMeetsMinimum(peer?.version)
+    this.assertWalletVersionMeetsMinimum(effectivePeerVersion(peer))
 
-    // The wire dialect is negotiated per peer — min(peer.version,
-    // BEACON_VERSION), floor '2'. A wrapped-capable peer (>= 3) receives the
-    // flat requestInput (the unchanged public shape) mapped onto the wrapped
-    // Tezos payload; a legacy peer receives the flat v2 message it has
-    // always spoken. Integrators never see either dialect.
-    const negotiatedVersion = negotiateEnvelopeVersion(peer?.version)
+    // The wire dialect is negotiated per peer — min(effective peer version,
+    // BEACON_VERSION), floor '2'. The effective version is capability-aware:
+    // legacy wallets ECHO the dApp's version in their pairing response, so
+    // peer.version alone would misread a 4.8.x wallet as v4; only peers that
+    // sent the v5 `protocolVersion` marker are trusted. A wrapped-capable
+    // peer receives the flat requestInput (the unchanged public shape)
+    // mapped onto the wrapped Tezos payload; a legacy peer receives the flat
+    // v2 message it has always spoken. Integrators never see either dialect.
+    const negotiatedVersion = negotiateEnvelopeVersion(effectivePeerVersion(peer))
     const requestSenderId = await getSenderId(await this.beaconId)
 
     let request: BeaconMessageWrapper<BlockchainMessage> | BeaconMessage
@@ -3125,15 +3130,15 @@ export class DAppClient extends Client {
     const peer = await this.getPeer(account)
 
     // Enforce the dApp's required minimum before a request leaves the SDK.
-    this.assertWalletVersionMeetsMinimum(peer?.version)
+    this.assertWalletVersionMeetsMinimum(effectivePeerVersion(peer))
 
     const request: BeaconMessageWrapper<BlockchainMessage> = {
       id: messageId,
-      // The envelope carries the version negotiated against the peer:
-      // min(peer.version, BEACON_VERSION), floor '3'. A v3 wallet treats any
-      // version >= 3 as a wrapped message; a v4 wallet reaches its
-      // multi-network branch only when it declared v4 at pairing.
-      version: negotiateEnvelopeVersion(peer?.version),
+      // The envelope carries the version negotiated against the effective
+      // (capability-aware) peer version — see effectivePeerVersion: legacy
+      // wallets echo the dApp's version, so only peers that sent the v5
+      // `protocolVersion` marker are trusted with wrapped v3/v4 envelopes.
+      version: negotiateEnvelopeVersion(effectivePeerVersion(peer)),
       senderId: await getSenderId(await this.beaconId),
       message: requestInput
     }

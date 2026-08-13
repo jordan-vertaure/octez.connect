@@ -1,6 +1,7 @@
 import {
   buildDisconnectMessage,
   compareBeaconVersion,
+  effectivePeerVersion,
   isAtLeastVersion,
   isMultiNetworkVersion,
   negotiateEnvelopeVersion,
@@ -44,6 +45,48 @@ describe('negotiateEnvelopeVersion', () => {
     ['hostile version', '<script>', '2']
   ])('%s: %p → %p', (_label, peerVersion, expected) => {
     expect(negotiateEnvelopeVersion(peerVersion as string | undefined)).toBe(expected)
+  })
+})
+
+describe('effectivePeerVersion (legacy version-echo hardening)', () => {
+  // Legacy wallets (octez.connect 4.8.x, upstream beacon-sdk forks like the
+  // one Kukai ships) build their pairing response with the version of the
+  // dApp's pairing REQUEST — a v5 dApp sees its own '4' echoed back. Only a
+  // peer that sent the v5-only `protocolVersion` marker may be trusted with
+  // its declared version; everything else is a flat-v2 speaker.
+  it('trusts version only when the v5 protocolVersion marker is present', () => {
+    expect(effectivePeerVersion({ version: '4', protocolVersion: 2 })).toBe('4')
+    expect(effectivePeerVersion({ version: '3', protocolVersion: 2 })).toBe('3')
+    expect(effectivePeerVersion({ version: '4', protocolVersion: 1 })).toBe('4')
+  })
+
+  it('treats a marker-less peer as legacy v2 regardless of its echoed version', () => {
+    // The Kukai / 4.8.6 repro: wallet echoed the dApp's '4'.
+    expect(effectivePeerVersion({ version: '4' })).toBe('2')
+    expect(effectivePeerVersion({ version: '3' })).toBe('2')
+    expect(effectivePeerVersion({ version: '2' })).toBe('2')
+  })
+
+  it('treats malformed/absent markers as legacy', () => {
+    expect(effectivePeerVersion({ version: '4', protocolVersion: 'x' as unknown as number })).toBe(
+      '2'
+    )
+    expect(effectivePeerVersion({ version: '4', protocolVersion: null as unknown as number })).toBe(
+      '2'
+    )
+  })
+
+  it('propagates absent peers (WalletConnect path)', () => {
+    expect(effectivePeerVersion(undefined)).toBeUndefined()
+  })
+
+  it('composes with negotiateEnvelopeVersion into the legacy dialect', () => {
+    // End-to-end of the fix: echoed '4' without marker → flat v2 envelope.
+    expect(negotiateEnvelopeVersion(effectivePeerVersion({ version: '4' }))).toBe('2')
+    // Genuine v5 wallet → full v4 wire.
+    expect(negotiateEnvelopeVersion(effectivePeerVersion({ version: '4', protocolVersion: 2 }))).toBe(
+      '4'
+    )
   })
 })
 

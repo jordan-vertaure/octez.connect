@@ -128,6 +128,39 @@ export const negotiateEnvelopeVersion = (peerVersion: string | undefined): strin
 }
 
 /**
+ * The peer's version as safe to feed into capability negotiation
+ * ({@link negotiateEnvelopeVersion}, multi-network gating, minimum-version
+ * enforcement).
+ *
+ * `peer.version` alone CANNOT be trusted: legacy wallets (octez.connect
+ * 4.8.x and upstream beacon-sdk forks) build their pairing response with the
+ * version field of the dApp's pairing REQUEST — they echo the dApp's own
+ * version back instead of declaring theirs. A v5 dApp reading that echo sees
+ * '4', serves a wrapped v4 envelope, and the legacy wallet silently drops it
+ * after pairing ("Pairing complete! Waiting for permission request…").
+ *
+ * The reliable capability marker is `protocolVersion`: v5+ pairing responses
+ * attach it on every transport that can carry it (P2P, PostMessage), legacy
+ * responses never do, and it cannot be echoed (legacy constructors don't
+ * know the field). A peer without a finite `protocolVersion` is therefore
+ * treated as a legacy flat-v2 speaker regardless of its echoed `version` —
+ * exactly the wire a 4.8.x dApp would have served it.
+ *
+ * @category Utility
+ */
+export const effectivePeerVersion = (
+  peer: { version?: string; protocolVersion?: unknown } | undefined
+): string | undefined => {
+  if (!peer) {
+    return undefined
+  }
+  // `Number(null)` is 0 (finite) — treat null like absent, not like v5.
+  const protocolRaw = peer.protocolVersion == null ? Number.NaN : Number(peer.protocolVersion)
+
+  return Number.isFinite(protocolRaw) ? peer.version : LEGACY_ENVELOPE_VERSION
+}
+
+/**
  * Build a wrapped beacon envelope. Single source of truth for the
  * `{ id, version, senderId, message }` wire shape so senders cannot drift.
  *

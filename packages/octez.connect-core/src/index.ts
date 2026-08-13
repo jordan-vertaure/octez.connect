@@ -119,6 +119,7 @@ export {
   isAtLeastVersion,
   isMultiNetworkVersion,
   negotiateEnvelopeVersion,
+  effectivePeerVersion,
   wrapBeaconMessage,
   unwrapBeaconMessage
 } from './utils/message-utils'
