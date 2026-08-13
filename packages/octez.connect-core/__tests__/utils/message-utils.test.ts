@@ -76,8 +76,23 @@ describe('effectivePeerVersion (legacy version-echo hardening)', () => {
     )
   })
 
-  it('propagates absent peers (WalletConnect path)', () => {
+  it('rejects non-positive markers (protocol minimum is 1)', () => {
+    expect(effectivePeerVersion({ version: '4', protocolVersion: 0 })).toBe('2')
+    expect(effectivePeerVersion({ version: '4', protocolVersion: -1 })).toBe('2')
+    // Number('') is 0 — an empty-string marker must not smuggle trust in.
+    expect(effectivePeerVersion({ version: '4', protocolVersion: '' as unknown as number })).toBe(
+      '2'
+    )
+  })
+
+  it('keeps "unknown" semantics for peers that declare no version (WalletConnect path)', () => {
+    // Version gates treat unknown as allowed-through and response handling
+    // falls back to the response envelope version — a version-less peer must
+    // NOT be coerced to legacy (that would collapse WC multi-network
+    // sessions to a single account).
     expect(effectivePeerVersion(undefined)).toBeUndefined()
+    expect(effectivePeerVersion({})).toBeUndefined()
+    expect(effectivePeerVersion({ protocolVersion: 2 })).toBeUndefined()
   })
 
   it('composes with negotiateEnvelopeVersion into the legacy dialect', () => {

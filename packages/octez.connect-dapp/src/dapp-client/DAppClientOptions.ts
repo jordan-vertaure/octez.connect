@@ -162,16 +162,24 @@ export interface DAppClientOptions {
   enableMetrics?: boolean
 
   /**
-   * Minimum `peer.version` the dApp will accept from a wallet. The gate is
-   * opt-in: it defaults to the lowest supported protocol version, so every
-   * wallet the SDK can talk to is accepted and upgrading the SDK never
-   * rejects existing v2/v3 wallets. Set `'4'` to require the v4
-   * multi-network protocol. Must be a decimal-integer string in
-   * `[1, BEACON_VERSION]`; otherwise `InvalidRequiredMinimumVersionError` is
-   * thrown at construction. A wallet that reports a version below this minimum
-   * is rejected with `VersionUnsupportedBeaconError` when a request is sent
-   * (a wallet that reports no version at all is treated as unknown and
-   * allowed, so legacy pairings keep working).
+   * Minimum wallet version the dApp will accept. The gate is opt-in: it
+   * defaults to the lowest supported protocol version, so every wallet the
+   * SDK can talk to is accepted and upgrading the SDK never rejects existing
+   * v2/v3 wallets. Set `'4'` to require the v4 multi-network protocol. Must
+   * be a decimal-integer string in `[1, BEACON_VERSION]`; otherwise
+   * `InvalidRequiredMinimumVersionError` is thrown at construction. A wallet
+   * below this minimum is rejected with `VersionUnsupportedBeaconError` when
+   * a request is sent.
+   *
+   * The version compared against this minimum is the wallet's EFFECTIVE
+   * version, not the raw `peer.version`: legacy wallets echo the dApp's own
+   * version at pairing, so a declared version is only trusted when the
+   * pairing response carried the v5 `protocolVersion` capability marker —
+   * marker-less wallets that declared a version count as `'2'` (and are
+   * therefore rejected by a minimum of `'3'` or `'4'`, even though their
+   * echoed `peer.version` may read higher). A wallet that reports no version
+   * at all (WalletConnect pairings) is still treated as unknown and allowed,
+   * so those pairings keep working.
    */
   requiredMinimumVersion?: string
 }

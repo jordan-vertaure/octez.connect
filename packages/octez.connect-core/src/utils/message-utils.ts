@@ -142,22 +142,33 @@ export const negotiateEnvelopeVersion = (peerVersion: string | undefined): strin
  * The reliable capability marker is `protocolVersion`: v5+ pairing responses
  * attach it on every transport that can carry it (P2P, PostMessage), legacy
  * responses never do, and it cannot be echoed (legacy constructors don't
- * know the field). A peer without a finite `protocolVersion` is therefore
- * treated as a legacy flat-v2 speaker regardless of its echoed `version` —
- * exactly the wire a 4.8.x dApp would have served it.
+ * know the field). A peer that DECLARES a version without a valid marker
+ * (a positive protocol version, matching the protocol's minimum of 1) is
+ * therefore treated as a legacy flat-v2 speaker regardless of its echoed
+ * `version` — exactly the wire a 4.8.x dApp would have served it.
+ *
+ * A peer that declares NO version at all keeps the long-standing "unknown"
+ * semantics and maps to `undefined` (WalletConnect pairings, where beacon
+ * versions are never fabricated and capability is negotiated via session
+ * namespaces): version gates treat unknown as allowed-through and response
+ * handling falls back to the response envelope's version. The echo problem
+ * by definition only exists for peers that DO carry a version.
  *
  * @category Utility
  */
 export const effectivePeerVersion = (
   peer: { version?: string; protocolVersion?: unknown } | undefined
 ): string | undefined => {
-  if (!peer) {
+  if (!peer || peer.version == null) {
     return undefined
   }
   // `Number(null)` is 0 (finite) — treat null like absent, not like v5.
   const protocolRaw = peer.protocolVersion == null ? Number.NaN : Number(peer.protocolVersion)
 
-  return Number.isFinite(protocolRaw) ? peer.version : LEGACY_ENVELOPE_VERSION
+  // Positive protocol versions only (the protocol's minimum is 1): `0`,
+  // negatives, and non-numeric noise are malformed markers and must stay on
+  // the legacy path, like an absent marker.
+  return Number.isFinite(protocolRaw) && protocolRaw >= 1 ? peer.version : LEGACY_ENVELOPE_VERSION
 }
 
 /**

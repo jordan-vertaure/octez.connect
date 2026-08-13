@@ -73,8 +73,10 @@ silently degrading.
 
 ## 2. The minimum upgrade (no new features)
 
-Bump every `@tezos-x/octez.connect-*` dependency from `4.8.6` to
-`5.0.0-beta.x`, then apply the required edits below. These are **breaking
+Bump every `@tezos-x/octez.connect-*` dependency from `4.8.6` to the latest
+`5.0.x` — **dApps must use ≥ 5.0.2**; 5.0.0/5.0.1 dApps cannot talk to
+pre-v5 wallets (see the known issue in §1). Then apply the required edits
+below. These are **breaking
 changes independent of multi-network** — you must handle them even if you never
 touch a second network.
 
@@ -305,5 +307,5 @@ transparent to integrators.
 
 ---
 
-*Applies to `@tezos-x/octez.connect-*` `5.0.0-beta.x`. Package names and Node/npm
-engine requirements are unchanged from v4.8.6.*
+*Applies to `@tezos-x/octez.connect-*` `5.0.x` (dApps: ≥ `5.0.2`, see §1).
+Package names and Node/npm engine requirements are unchanged from v4.8.6.*
