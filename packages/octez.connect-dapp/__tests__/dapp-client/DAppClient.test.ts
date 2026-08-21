@@ -2,7 +2,7 @@
 import { DAppClient } from '../../src/dapp-client/DAppClient'
 import { BeaconErrorType, BeaconMessageType, NetworkType } from '@tezos-x/octez.connect-types'
 import { ExposedPromise } from '@tezos-x/octez.connect-utils'
-import { LocalStorage } from '@tezos-x/octez.connect-core'
+import { LocalStorage, DEFAULT_WALLETCONNECT_PROJECT_ID } from '@tezos-x/octez.connect-core'
 import { BeaconEvent } from '../../src/events'
 
 //
@@ -247,7 +247,7 @@ describe('DAppClient — abort handling', () => {
   })
 })
 
-describe('DAppClient — WalletConnect opt-in (#32)', () => {
+describe('DAppClient — WalletConnect default-on with shared projectId', () => {
   const make = (config: any) =>
     new DAppClient({
       name: 'WCOptInApp',
@@ -256,10 +256,12 @@ describe('DAppClient — WalletConnect opt-in (#32)', () => {
       ...config
     })
 
-  it('does not enable WC or apply a default projectId when no walletConnectOptions are given', () => {
+  it('enables WC with the shared default projectId when no walletConnectOptions are given', () => {
+    // dApps must not need a WalletConnect Cloud registration to offer WC
+    // wallets (e.g. Kukai Mobile) — the shared ecosystem id applies.
     const client = make({})
-    expect((client as any).isWalletConnectEnabled).toBe(false)
-    expect((client as any).wcProjectId).toBeUndefined()
+    expect((client as any).isWalletConnectEnabled).toBe(true)
+    expect((client as any).wcProjectId).toBe(DEFAULT_WALLETCONNECT_PROJECT_ID)
     expect((client as any).wcRelayUrl).toBeUndefined()
   })
 
@@ -269,11 +271,17 @@ describe('DAppClient — WalletConnect opt-in (#32)', () => {
       disableWalletConnect: true
     })
     expect((client as any).isWalletConnectEnabled).toBe(false)
-    // No default projectId is applied when WC is disabled.
+    // No projectId is applied when WC is disabled.
     expect((client as any).wcProjectId).toBeUndefined()
   })
 
-  it('enables WC and resolves a projectId when walletConnectOptions are provided', () => {
+  it('disableWalletConnect alone turns WC off (no walletConnectOptions needed)', () => {
+    const client = make({ disableWalletConnect: true })
+    expect((client as any).isWalletConnectEnabled).toBe(false)
+    expect((client as any).wcProjectId).toBeUndefined()
+  })
+
+  it('a provided projectId overrides the shared default', () => {
     const client = make({ walletConnectOptions: { projectId: 'abc123' } })
     expect((client as any).isWalletConnectEnabled).toBe(true)
     expect((client as any).wcProjectId).toBe('abc123')
@@ -282,7 +290,7 @@ describe('DAppClient — WalletConnect opt-in (#32)', () => {
   it('falls back to the default projectId when walletConnectOptions omit it (relayUrl only)', () => {
     const client = make({ walletConnectOptions: { relayUrl: 'wss://relay.example' } })
     expect((client as any).isWalletConnectEnabled).toBe(true)
-    expect(typeof (client as any).wcProjectId).toBe('string')
+    expect((client as any).wcProjectId).toBe(DEFAULT_WALLETCONNECT_PROJECT_ID)
     expect((client as any).wcRelayUrl).toBe('wss://relay.example')
   })
 })
