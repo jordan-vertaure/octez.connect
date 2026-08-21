@@ -206,11 +206,11 @@ export class DAppClient extends Client {
   protected wcRelayUrl?: string
 
   /**
-   * WalletConnect is opt-in: only enabled when `walletConnectOptions` is provided
-   * and `disableWalletConnect` is not set. When false, no WC transport is built,
+   * WalletConnect is opt-in: enabled  by default, can be disabled  
+   * when  `disableWalletConnect` is set. When false, no WC transport is built,
    * listened to, or offered for pairing, and no default projectId is applied.
    */
-  protected isWalletConnectEnabled: boolean = false
+  protected isWalletConnectEnabled: boolean = true
 
   private isGetActiveAccountHandled: boolean = false
 
