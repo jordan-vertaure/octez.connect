@@ -250,7 +250,7 @@ describe('DAppClient — abort handling', () => {
 describe('DAppClient — WalletConnect default-on with shared projectId', () => {
   const make = (config: any) =>
     new DAppClient({
-      name: 'WCOptInApp',
+      name: 'WCDefaultOnApp',
       storage: new LocalStorage(),
       preferredNetwork: NetworkType.MAINNET,
       ...config

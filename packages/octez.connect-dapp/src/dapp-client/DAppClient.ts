@@ -206,9 +206,10 @@ export class DAppClient extends Client {
   protected wcRelayUrl?: string
 
   /**
-   * WalletConnect is opt-in: enabled  by default, can be disabled  
-   * when  `disableWalletConnect` is set. When false, no WC transport is built,
-   * listened to, or offered for pairing, and no default projectId is applied.
+   * WalletConnect is enabled by default (as in 4.8.x) using the shared
+   * DEFAULT_WALLETCONNECT_PROJECT_ID unless `walletConnectOptions` overrides it.
+   * Set `disableWalletConnect: true` to opt out. When false, no WC transport is
+   * built, listened to, or offered for pairing.
    */
   protected isWalletConnectEnabled: boolean = true
 
@@ -934,7 +935,8 @@ export class DAppClient extends Client {
             resolve(await super.init(this.walletConnectTransport))
           } else {
             // The persisted active account was paired over WalletConnect but WC
-            // is now opt-out/disabled (#32), so there is no matching transport to
+            // has since been disabled (`disableWalletConnect`, #32) or failed to
+            // initialize, so there is no matching transport to
             // restore. Without this branch none of the conditions above call
             // resolve() and the init promise created above never settles, so
             // init() (and every later call awaiting it) hangs forever. Resolve on

@@ -121,7 +121,8 @@ export interface DAppClientOptions {
    */
   walletConnectOptions?: RequireAtLeastOne<{
     /**
-     * The projectId of the application. Has to be obtained from https://cloud.walletconnect.com/
+     * Your own projectId, obtained from https://cloud.walletconnect.com/ —
+     * omit it to use the shared ecosystem default.
      */
     projectId?: string
 

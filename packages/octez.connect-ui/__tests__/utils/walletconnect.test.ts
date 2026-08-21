@@ -14,7 +14,7 @@ describe('hasWalletConnectSymKey (#32 cross-compartment hardening)', () => {
     expect(hasWalletConnectSymKey('https://example.com')).toBe(false)
   })
 
-  it('returns false for the empty string (WalletConnect disabled / opt-in off)', () => {
+  it('returns false for the empty string (WalletConnect disabled via disableWalletConnect)', () => {
     expect(hasWalletConnectSymKey('')).toBe(false)
   })
 
