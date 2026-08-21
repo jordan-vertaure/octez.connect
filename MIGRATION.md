@@ -121,7 +121,7 @@ const client = new DAppClient({
 await client.requestPermissions({
   networks: [
     { chainId: 'tezos:NetXdQprcVkpaWU' }, // mainnet
-    { chainId: 'tezos:NetXnHfVqm9iesp' }  // ghostnet
+    { chainId: 'tezos:NetXsqzbfFenSTS' }  // shadownet
   ]
 })
 
@@ -130,7 +130,7 @@ const accounts = await client.getAccounts()
 
 // Target a specific network on an operation:
 await client.requestOperation({
-  network: 'tezos:NetXnHfVqm9iesp',
+  network: 'tezos:NetXsqzbfFenSTS',
   operationDetails: [ /* ... */ ]
 })
 ```
@@ -201,7 +201,7 @@ returns a single account and the dApp treats the session as single-network.
 | Area | Change | Benefit |
 |------|--------|---------|
 | Multi-network | `networks` request + `accounts` fanout + CAIP‑2 operation routing | One pairing spans several chains; fewer pairing round‑trips. |
-| Version negotiation | `peer.version` handshake, `requiredMinimumVersion`, strict version parsing (`BEACON_VERSION` `3`→`4`) | dApps can require capabilities and reject incompatible wallets with a clear, typed error instead of failing mysteriously. |
+| Version negotiation | `protocolVersion` pairing-marker handshake, `requiredMinimumVersion`, strict version parsing (`BEACON_VERSION` `3`→`4`) | dApps can require capabilities and reject incompatible wallets with a clear, typed error instead of failing mysteriously. |
 | Structured errors & diagnostics | New `BEACON_ERROR_CODES` / error‑code modules, `gatherDiagnostics`, `buildErrorContext`, `ErrorContext`, `DiagnosticSnapshot` | Programmatic error discrimination and better bug reports. |
 | Wallet list | Now downloaded from a **pinned** release and shipped as JSON (`@tezos-x/octez.connect-ui/data/*.json`, a new exported subpath); v4.8.6 generated it at build | Reproducible builds; you can import the list directly. |
 
@@ -213,8 +213,9 @@ returns a single account and the dApp treats the session as single-network.
 - **No built‑in request timeout** anymore — add your own if you need one.
 - **WalletConnect 2.23.x** — re‑verify wallets sensitive to the WC relay
   version (notably Kukai iOS).
-- **`addBlockchain(new TezosBlockchain())` is a new precondition** for the
-  multi-network response path (throws if missing).
+- **No `addBlockchain` call is needed** — `TezosBlockchain` is registered by
+  default in both clients (see §3.1); `addBlockchain` remains public for other
+  chains or to override the default.
 - **Wire note (advanced):** for peers negotiated at protocol v2+, the message
   serializer uses plain JSON rather than the bs58check envelope. This is
   transparent unless you inspect/validate raw transport bytes; pairing and
@@ -233,7 +234,7 @@ RPC‑sourced and locked by unit test):
 | NetworkType | Genesis (CAIP‑2 reference) |
 |---|---|
 | `mainnet` | `NetXdQprcVkpaWU` |
-| `ghostnet` | `NetXnHfVqm9iesp` |
+| `ghostnet` (deprecated, succeeded by `shadownet`) | `NetXnHfVqm9iesp` |
 | `shadownet` | `NetXsqzbfFenSTS` |
 | `tezosx-mainnet` | `NetXohUVN5QWR4f` |
 | `ushuaianet` | `NetXpX8WSZkAZZA` |

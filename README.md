@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@tezos-x/octez.connect-sdk.svg?colorB=brightgreen)](https://www.npmjs.com/package/@tezos-x/octez.connect-sdk)
 [![documentation](https://img.shields.io/badge/documentation-online-brightgreen.svg)](https://octez-connect.tezos.com)
-[![GitHub Action](https://github.com/trilitech/octez.connect/workflows/Build%2C%20Test%20and%20Analyze/badge.svg)](https://github.com/trilitech/octez.connect/actions?query=workflow%3A%22Build%2C+Test+and+Analyze%22+branch%3Amain)
+[![CI](https://github.com/trilitech/octez.connect/workflows/CI/badge.svg?branch=master)](https://github.com/trilitech/octez.connect/actions?query=workflow%3ACI+branch%3Amaster)
 
 > Connect Wallets with dApps on Tezos
 
@@ -23,7 +23,7 @@ Besides this Typescript SDK, we also provide SDKs for native iOS and Android Wal
 
 The documentation can be found [here](https://octez-connect.tezos.com/), technical documentation can be found [here](https://typedocs.octez-connect.tezos.com/).
 
-Upgrading from v4.8.6? See the [v4.8.6 → v5.0.0-beta migration guide](./MIGRATION.md) for multi-network support, backward compatibility, and the required dApp/wallet changes.
+Upgrading from v4.8.6? See the [v4.8.6 → v5 migration guide](./MIGRATION.md) for multi-network support, backward compatibility, and the required dApp/wallet changes.
 
 ## Installation
 
@@ -86,7 +86,7 @@ For a more complete example, see [`examples/wallet.html`](./examples/wallet.html
 
 ## Adding a wallet to octez.connect
 
-Wallets are managed in the [beacon-wallet-list](https://github.com/airgap-it/beacon-wallet-list) repository. Please create a PR there to add your wallet.
+Wallets are managed in the [octez.connect-wallet-list](https://github.com/trilitech/octez.connect-wallet-list) repository. Please create a PR there to add your wallet; the SDK consumes a pinned release of that list (see `scripts/download-wallet-lists.ts`).
 
 For iOS wallets, the wallet needs to define a custom url scheme to support the same-device functionality.
 

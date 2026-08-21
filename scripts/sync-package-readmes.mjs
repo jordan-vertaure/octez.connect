@@ -90,7 +90,7 @@ This package is published from the Trilitech-maintained octez.connect repository
 ${recommendedEntryPoints(dirName)}## Notes
 
 - Trilitech publishes these packages under the \`@tezos-x/octez.connect-*\` scope
-- Release notes, package policy, and the current package list live in the repository README
+- Release notes live on the [GitHub Releases page](${repoUrl}/releases); package policy lives in [CONTRIBUTING.md](${repoUrl}/blob/master/CONTRIBUTING.md) and [MAINTAINERS.md](${repoUrl}/blob/master/MAINTAINERS.md)
 `
 
 for (const dirName of packageDirs) {
