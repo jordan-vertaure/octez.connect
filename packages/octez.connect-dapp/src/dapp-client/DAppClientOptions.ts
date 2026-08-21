@@ -114,11 +114,15 @@ export interface DAppClientOptions {
   /**
    * Configuration that is passed to the WalletConnect transport.
    *
-   * This is required to enable WalletConnect connections.
+   * OPTIONAL: WalletConnect is enabled by default using a shared ecosystem
+   * projectId, so dApps don't need to register with WalletConnect Cloud.
+   * Provide this to use your own projectId and/or relay server instead. To
+   * turn WalletConnect off entirely, set `disableWalletConnect`.
    */
   walletConnectOptions?: RequireAtLeastOne<{
     /**
-     * The projectId of the application. Has to be obtained from https://cloud.walletconnect.com/
+     * Your own projectId, obtained from https://cloud.walletconnect.com/ —
+     * omit it to use the shared ecosystem default.
      */
     projectId?: string
 
@@ -131,13 +135,11 @@ export interface DAppClientOptions {
   /**
    * Explicitly disable the WalletConnect transport.
    *
-   * WalletConnect is opt-in (it is only built when `walletConnectOptions` is
-   * provided). This additive flag lets a DApp that does provide
-   * `walletConnectOptions` still turn the transport off without removing that
-   * configuration. When `true`, no WalletConnect transport is constructed or
-   * listened to. Absence preserves current behavior. Use it for environments
-   * where the WalletConnect provider cannot run (e.g. a Firefox MV3
-   * content-script compartment).
+   * WalletConnect is ON by default (with the shared ecosystem projectId, or
+   * the one from `walletConnectOptions`). When `true`, no WalletConnect
+   * transport is constructed or listened to, regardless of
+   * `walletConnectOptions`. Use it for environments where the WalletConnect
+   * provider cannot run (e.g. a Firefox MV3 content-script compartment).
    */
   disableWalletConnect?: boolean
 

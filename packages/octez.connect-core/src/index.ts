@@ -22,6 +22,7 @@ import { Serializer } from './Serializer'
 import { ClientOptions } from './clients/client/ClientOptions'
 import {
   SDK_VERSION,
+  DEFAULT_WALLETCONNECT_PROJECT_ID,
   BEACON_VERSION,
   PROTOCOL_VERSION_V1,
   PROTOCOL_VERSION_V2,
@@ -100,6 +101,7 @@ export { PeerManager, AccountManager, AppMetadataManager, PermissionManager }
 // Constants
 export {
   SDK_VERSION,
+  DEFAULT_WALLETCONNECT_PROJECT_ID,
   BEACON_VERSION,
   PROTOCOL_VERSION_V1,
   PROTOCOL_VERSION_V2,

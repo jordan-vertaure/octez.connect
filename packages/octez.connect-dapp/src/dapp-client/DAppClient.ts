@@ -111,6 +111,7 @@ import {
   negotiateEnvelopeVersion,
   effectivePeerVersion,
   MESSAGE_WRAPPED_FROM_VERSION,
+  DEFAULT_WALLETCONNECT_PROJECT_ID,
   wrapBeaconMessage
 } from '@tezos-x/octez.connect-core'
 import { TezosBlockchain } from '@tezos-x/octez.connect-blockchain-tezos'
@@ -205,11 +206,12 @@ export class DAppClient extends Client {
   protected wcRelayUrl?: string
 
   /**
-   * WalletConnect is opt-in: only enabled when `walletConnectOptions` is provided
-   * and `disableWalletConnect` is not set. When false, no WC transport is built,
-   * listened to, or offered for pairing, and no default projectId is applied.
+   * WalletConnect is enabled by default (as in 4.8.x) using the shared
+   * DEFAULT_WALLETCONNECT_PROJECT_ID unless `walletConnectOptions` overrides it.
+   * Set `disableWalletConnect: true` to opt out. When false, no WC transport is
+   * built, listened to, or offered for pairing.
    */
-  protected isWalletConnectEnabled: boolean = false
+  protected isWalletConnectEnabled: boolean = true
 
   private isGetActiveAccountHandled: boolean = false
 
@@ -282,12 +284,15 @@ export class DAppClient extends Client {
       ...config
     })
     this.description = config.description
-    // WalletConnect is opt-in: only when walletConnectOptions is provided and not
-    // explicitly disabled. Don't apply the default projectId otherwise (#32).
-    this.isWalletConnectEnabled =
-      Boolean(config.walletConnectOptions) && !config.disableWalletConnect
+    // WalletConnect is enabled BY DEFAULT (as in 4.8.x) with the shared
+    // ecosystem projectId, so dApps don't have to register with WalletConnect
+    // Cloud to offer WC wallets (e.g. Kukai Mobile) — the free tier covers the
+    // ecosystem's volume. `walletConnectOptions` overrides the projectId/relay,
+    // `disableWalletConnect: true` opts out entirely (e.g. environments where
+    // the WC provider cannot run, see #32).
+    this.isWalletConnectEnabled = !config.disableWalletConnect
     this.wcProjectId = this.isWalletConnectEnabled
-      ? config.walletConnectOptions?.projectId || '24469fd0a06df227b6e5f7dc7de0ff4f'
+      ? config.walletConnectOptions?.projectId || DEFAULT_WALLETCONNECT_PROJECT_ID
       : undefined
     this.wcRelayUrl = this.isWalletConnectEnabled ? config.walletConnectOptions?.relayUrl : undefined
 
@@ -743,8 +748,8 @@ export class DAppClient extends Client {
 
     await this.addListener(this.p2pTransport)
 
-    // WalletConnect is opt-in (#32): skip building/listening the transport when
-    // no walletConnectOptions were provided or it was explicitly disabled.
+    // WalletConnect is on by default; skip building/listening the transport
+    // only when explicitly disabled via disableWalletConnect (#32).
     if (this.isWalletConnectEnabled) {
       const wcOptions = {
         projectId: this.wcProjectId,
@@ -930,7 +935,8 @@ export class DAppClient extends Client {
             resolve(await super.init(this.walletConnectTransport))
           } else {
             // The persisted active account was paired over WalletConnect but WC
-            // is now opt-out/disabled (#32), so there is no matching transport to
+            // has since been disabled (`disableWalletConnect`, #32) or failed to
+            // initialize, so there is no matching transport to
             // restore. Without this branch none of the conditions above call
             // resolve() and the init promise created above never settles, so
             // init() (and every later call awaiting it) hangs forever. Resolve on

@@ -483,7 +483,7 @@ const showRateLimitReached = async (): Promise<void> => {
 }
 
 /**
- * Show a "connection successful" alert for 1.5 seconds
+ * Close the pairing alert once the extension connection is established
  */
 const showExtensionConnectedAlert = () => {
   closeAlert()
@@ -504,7 +504,8 @@ const showRelayerErrorAlert = async (errorContext: ErrorContext): Promise<void> 
 }
 
 /**
- * Show a "channel closed" alert for 1.5 seconds
+ * No-op: the "channel closed" alert is intentionally disabled
+ * (body kept below for reference)
  */
 const showChannelClosedAlert = async (): Promise<void> => {
   // openAlert({

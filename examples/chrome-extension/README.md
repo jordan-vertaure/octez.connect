@@ -48,8 +48,8 @@ This interface defines what the Beacon layer needs from a wallet implementation.
 
 ### Prerequisites
 
-- Node.js 18+
-- npm
+- Node.js 22.12+ (matches the repo's `.nvmrc`)
+- npm 11+
 
 ### Setup
 
