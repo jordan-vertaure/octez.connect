@@ -52,7 +52,7 @@ silently degrading.
 
 ## 2. The minimum upgrade (no new features)
 
-Bump every `@tezos-x/octez.connect-*` dependency from `4.8.6` to `5.0.3` (or
+Bump every `@tezos-x/octez.connect-*` dependency from `4.8.6` to `5.0.4` (or
 later), then apply the required edits below. These are **breaking changes
 independent of multi-network** — you must handle them even if you never touch
 a second network.
@@ -77,13 +77,6 @@ a second network.
 
 ### 2.3 Both — runtime
 
-- **WalletConnect bumped `2.18.0` → `2.23.6`.** The SDK bundles it (not a peer
-  dependency), so no action is needed **unless** you install `@walletconnect/*`
-  yourself — then move your copy to `2.23.x` to avoid duplicates.
-  **Kukai‑iOS note:** the 4.8‑stable line pins WC to `2.18.0` for Kukai iOS
-  compatibility; **v5 deliberately stays on `2.23.x`** (required for
-  multi-network). Do **not** pin v5 back to `2.18.0`. Re‑verify Kukai iOS
-  pairing against `2.23.6`.
 - Node/npm engine requirements are **unchanged** from v4.8.6
   (`node ≥ 22.12`, `npm ≥ 11`).
 - **Deep imports into `@tezos-x/octez.connect-core`** moved from
@@ -273,5 +266,5 @@ transparent to integrators.
 
 ---
 
-*Applies to `@tezos-x/octez.connect-*` `5.0.3` and later. Package names and
+*Applies to `@tezos-x/octez.connect-*` `5.0.4` and later. Package names and
 Node/npm engine requirements are unchanged from v4.8.6.*

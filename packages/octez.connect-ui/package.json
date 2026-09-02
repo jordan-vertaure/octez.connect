@@ -1,6 +1,6 @@
 {
   "name": "@tezos-x/octez.connect-ui",
-  "version": "5.0.3",
+  "version": "5.0.4",
   "description": "This package contains the UI part (alerts and toasts) of the Beacon SDK.",
   "author": "Blockchain Infra <blockchain.infra@trili.tech>",
   "homepage": "https://octez-connect.tezos.com",
@@ -38,11 +38,11 @@
     "url": "https://github.com/trilitech/octez.connect/issues"
   },
   "dependencies": {
-    "@tezos-x/octez.connect-core": "5.0.3",
-    "@tezos-x/octez.connect-transport-postmessage": "5.0.3",
-    "@tezos-x/octez.connect-types": "5.0.3",
-    "@tezos-x/octez.connect-utils": "5.0.3",
-    "@walletconnect/utils": "2.23.6",
+    "@tezos-x/octez.connect-core": "5.0.4",
+    "@tezos-x/octez.connect-transport-postmessage": "5.0.4",
+    "@tezos-x/octez.connect-types": "5.0.4",
+    "@tezos-x/octez.connect-utils": "5.0.4",
+    "@walletconnect/utils": "2.18.0",
     "qrcode-svg": "^1.1.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
