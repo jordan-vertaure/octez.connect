@@ -3,7 +3,7 @@
 **Headline:** v5 adds **multi-network support** — a single pairing can grant a dApp
 accounts on several Tezos networks at once (e.g. mainnet + ghostnet), and
 operations can target a specific network by its CAIP‑2 chain id. This is the
-main reason to upgrade.
+main reason to upgrade. Use v5.0.4 or later. 
 
 **Compatibility promise:** v5 is designed to be **as backward compatible as
 possible**. A v5 dApp and a v4.8.6 wallet (and vice‑versa) still talk to each
@@ -204,8 +204,6 @@ returns a single account and the dApp treats the session as single-network.
   `disconnect`/`removeAllPeers` options, `subscribeToDisconnect`,
   `PeerUnreachableBeaconError`) require small code edits — see §2.
 - **No built‑in request timeout** anymore — add your own if you need one.
-- **WalletConnect 2.23.x** — re‑verify wallets sensitive to the WC relay
-  version (notably Kukai iOS).
 - **No `addBlockchain` call is needed** — `TezosBlockchain` is registered by
   default in both clients (see §3.1); `addBlockchain` remains public for other
   chains or to override the default.
@@ -255,7 +253,7 @@ pass through opaquely).
 
 **Changed defaults/behaviour:** `BEACON_VERSION` `3` → `4`;
 Tezos identifier `'xtz'` → `'tezos'` (with a `'xtz'` legacy registry alias);
-no built‑in request timeout; WalletConnect `2.18.0` → `2.23.6`;
+no built‑in request timeout;
 `TezosBlockchain` registered by default in both clients; the wire dialect is
 negotiated per peer (wrapped v3/v4 for capable peers, flat v2 otherwise) —
 transparent to integrators.
