@@ -117,4 +117,74 @@ describe('Client transport subscriptions', () => {
       expect(client.handled[0]).toMatchObject({ type: BeaconMessageType.Disconnect })
     })
   })
+
+  describe('addListener', () => {
+    it('detaches the replaced transport, not the incoming one', async () => {
+      const client = internals(new TestClient())
+      const dropped = fakeTransport()
+      const replacement = fakeTransport()
+
+      await client.addListener(dropped)
+      await client.addListener(replacement)
+
+      expect(dropped.listeners).toHaveLength(0)
+      expect(replacement.listeners).toHaveLength(1)
+    })
+
+    it('keeps one subscription per transport type', async () => {
+      const client = internals(new TestClient())
+      const postMessage = fakeTransport(TransportType.POST_MESSAGE)
+      const p2p = fakeTransport(TransportType.P2P)
+
+      await client.addListener(postMessage)
+      await client.addListener(p2p)
+
+      expect(postMessage.listeners).toHaveLength(1)
+      expect(p2p.listeners).toHaveLength(1)
+    })
+  })
+
+  describe('destroy', () => {
+    it('detaches every subscription after a disconnection left no transport resolved', async () => {
+      const client = new TestClient()
+      const transport = fakeTransport()
+
+      await internals(client).setTransport(transport)
+      await internals(client).setTransport(undefined)
+
+      await client.destroy()
+
+      expect(transport.listeners).toHaveLength(0)
+    })
+  })
+
+  describe('cleanup', () => {
+    it('detaches every subscription from its own transport', async () => {
+      const client = internals(new TestClient())
+      const postMessage = fakeTransport(TransportType.POST_MESSAGE)
+      const p2p = fakeTransport(TransportType.P2P)
+
+      await client.addListener(postMessage)
+      await client.addListener(p2p)
+      // Only one of them can be the active transport.
+      await client.setTransport(p2p)
+
+      await client.cleanup()
+
+      expect(postMessage.listeners).toHaveLength(0)
+      expect(p2p.listeners).toHaveLength(0)
+    })
+
+    it('detaches even when no transport is resolved', async () => {
+      const client = internals(new TestClient())
+      const transport = fakeTransport()
+
+      await client.addListener(transport)
+      // Subscribed through addListener alone, never set as the active transport.
+
+      await client.cleanup()
+
+      expect(transport.listeners).toHaveLength(0)
+    })
+  })
 })
