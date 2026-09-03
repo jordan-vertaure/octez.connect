@@ -390,12 +390,30 @@ export class DAppClient extends Client {
       // normalized back to those same flat shapes — the wire dialect stays
       // invisible to integrators. Non-Tezos wrapped payloads keep the
       // pass-through of the generic permissionRequest/request API.
-      const isWrapped = usesWrappedMessages(wireMessage.version)
+      // The wrapped dialect is identified by its payload, not by the absence of
+      // a flat marker: `wrapBeaconMessage` only ever emits
+      // { id, version, senderId, message }. Routing on the version alone dropped
+      // every flat message stamped with the wrapped dialect's number -- which is
+      // how a wallet built outside this SDK (or on <= 4.8.6, echoing the peer's
+      // version) sends its `disconnect` -- so handleDisconnect never ran and the
+      // dApp kept the account connected until the user disconnected a second
+      // time (#52). Testing for `.message` positively routes that message down
+      // the flat path, and still reads a non-conformant wallet's wrapped
+      // envelope as wrapped even when it carries a redundant top-level `type`.
+      const hasWrappedPayload = Boolean(
+        (wireMessage as BeaconMessageWrapper<BeaconBaseMessage>).message
+      )
+      const isWrapped = usesWrappedMessages(wireMessage.version) && hasWrappedPayload
 
       // Issue #33: a V3-versioned message can arrive without its wrapped payload.
-      // Drop it safely instead of dereferencing an undefined payload, which would
-      // throw an unhandled rejection inside the transport subscription callback.
-      if (isWrapped && !(wireMessage as BeaconMessageWrapper<BeaconBaseMessage>).message) {
+      // With no top-level `type` either it carries nothing to route on, so drop
+      // it instead of dereferencing an undefined payload, which would throw an
+      // unhandled rejection inside the transport subscription callback.
+      if (
+        usesWrappedMessages(wireMessage.version) &&
+        !hasWrappedPayload &&
+        !('type' in wireMessage)
+      ) {
         logger.log(
           'handleResponse',
           'Received wrapped message with undefined payload; dropping',
