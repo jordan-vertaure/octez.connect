@@ -25,18 +25,24 @@ const PEER = {
   publicKey: 'wallet-public-key',
   senderId: 'wallet-sender-id',
   name: 'wallet',
-  version: '4'
+  version: '4',
+  // What a postMessage pairing response carries, and what `connectionInfo.id`
+  // holds for a message from that extension.
+  extensionId: 'wallet-extension-id'
 }
 
 type Listener = (message: unknown, connectionInfo: ConnectionContext) => Promise<void>
 
 /** Enough of a Transport for `Client` to subscribe to and read peers from. */
-const fakeTransport = (type: TransportType = TransportType.POST_MESSAGE) => {
+const fakeTransport = (
+  type: TransportType = TransportType.POST_MESSAGE,
+  peers: (typeof PEER)[] = [PEER]
+) => {
   const listeners: Listener[] = []
   const transport = {
     type,
     listeners,
-    getPeers: async () => [PEER],
+    getPeers: async () => peers,
     addListener: async (listener: Listener) => {
       listeners.push(listener)
     },
@@ -79,6 +85,36 @@ describe('Client transport subscriptions', () => {
       await client.addListener(transport)
 
       await expect(client.findPeer(PEER.publicKey, transport)).resolves.toEqual(PEER)
+    })
+
+    it('resolves a postMessage peer by the extension id the transport attaches', async () => {
+      const client = internals(new TestClient())
+      const transport = fakeTransport()
+
+      await client.addListener(transport)
+
+      await expect(client.findPeer(PEER.extensionId, transport)).resolves.toEqual(PEER)
+    })
+
+    it('prefers the newest peer when two share an extension id', async () => {
+      // `addPeer` dedupes by public key, so a wallet that rotated its beacon key
+      // leaves both peers in the store under the same extension id.
+      const stale = { ...PEER, publicKey: 'stale-public-key', senderId: 'stale-sender-id' }
+      const client = internals(new TestClient())
+      const transport = fakeTransport(TransportType.POST_MESSAGE, [stale, PEER])
+
+      await client.addListener(transport)
+
+      await expect(client.findPeer(PEER.extensionId, transport)).resolves.toEqual(PEER)
+    })
+
+    it('finds nothing for an id that is neither a public key nor an extension id', async () => {
+      const client = internals(new TestClient())
+      const transport = fakeTransport()
+
+      await client.addListener(transport)
+
+      await expect(client.findPeer('someone-else', transport)).resolves.toBeUndefined()
     })
 
     it('finds nothing without an id, without touching the transport', async () => {

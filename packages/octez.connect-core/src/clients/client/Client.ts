@@ -319,7 +319,8 @@ export abstract class Client extends BeaconClient {
   }
 
   /**
-   * Look a peer up by public key, on the transport that delivered the message.
+   * Look a peer up by the id the transport attached to a message, on the
+   * transport that delivered it.
    *
    * The transport is a parameter rather than a lookup because every caller
    * already has one: a message can only have been delivered by a transport
@@ -327,19 +328,34 @@ export abstract class Client extends BeaconClient {
    * between a disconnection and the next pairing -- setTransport(undefined)
    * leaves `_transport` unsettled, so the await only returned once a later
    * pairing resolved it, and the message was replayed into that connection.
+   *
+   * `connectionInfo.id` is the peer's public key over P2P, but the browser
+   * extension's id over postMessage, where the transport cannot tell which
+   * peer's key decrypted the message. Match either: only a postMessage
+   * pairing response carries an `extensionId`, so the fallback is inert for
+   * every other peer.
    */
   protected async findPeer(
-    publicKey: string | undefined,
+    id: string | undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     transport: Transport<any>
   ): Promise<PeerInfo | undefined> {
-    if (!publicKey) {
+    if (!id) {
       return undefined
     }
 
     const peers = await transport.getPeers()
 
-    return peers.find((peerInfo) => peerInfo.publicKey === publicKey)
+    return (
+      peers.find((peerInfo) => peerInfo.publicKey === id) ??
+      // Newest first. `addPeer` dedupes by public key, so a wallet that rotated
+      // its beacon key -- a reinstall, a reset -- leaves the stale peer in place
+      // beside the new one, both carrying the same extension id. A fresh pairing
+      // has to shadow the stale peer, not the other way round.
+      [...peers]
+        .reverse()
+        .find((peerInfo) => 'extensionId' in peerInfo && peerInfo.extensionId === id)
+    )
   }
 
   private getLocalProtocolVersion(): number {
