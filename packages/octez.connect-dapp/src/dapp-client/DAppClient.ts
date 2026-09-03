@@ -495,9 +495,7 @@ export class DAppClient extends Client {
         await this.events.emit(BeaconEvent.CHANNEL_CLOSED)
 
         // Reset transport state so next requestPermissions() shows pairing modal
-        this.postMessageTransport = undefined
-        this.p2pTransport = undefined
-        this.walletConnectTransport = undefined
+        await this.dropTransports()
         await this.setTransport(undefined)
         await this.setActivePeer(undefined)
       }
@@ -723,6 +721,36 @@ export class DAppClient extends Client {
     this.storage.set(StorageKey.USER_ID, this.userId)
   }
 
+  /**
+   * Disconnect the postMessage and P2P transports and drop all three instances.
+   *
+   * A dropped transport is not garbage. Its communication client keeps its
+   * `window` handlers (postMessage) or its matrix sync (P2P) until it is told to
+   * stop, so every path that used to just forget the instances left one more
+   * live client behind per connection. Every such path goes through here.
+   *
+   * WalletConnect is left to each call site: its session is shared across tabs
+   * and only the leader may close it, which the callers already handle.
+   */
+  private async dropTransports(): Promise<void> {
+    const dropped = [this.postMessageTransport, this.p2pTransport].filter(
+      (transport) => transport !== undefined
+    )
+    this.postMessageTransport = undefined
+    this.p2pTransport = undefined
+    this.walletConnectTransport = undefined
+
+    // Best effort: a transport that fails to disconnect is still dropped, and
+    // the others are still disconnected.
+    await Promise.all(
+      dropped.map((transport) =>
+        transport.disconnect().catch((error: unknown) => {
+          logger.warn('dropTransports', error instanceof Error ? error.message : String(error))
+        })
+      )
+    )
+  }
+
   public async initInternalTransports(): Promise<void> {
     const seed = await this.storage.get(StorageKey.BEACON_SDK_SECRET_SEED)
     if (!seed) {
@@ -870,6 +898,7 @@ export class DAppClient extends Client {
    */
   async destroy(): Promise<void> {
     await this.createStateSnapshot()
+    await this.dropTransports()
     await super.destroy()
   }
 
@@ -1021,11 +1050,15 @@ export class DAppClient extends Client {
               await this.buildPayload('connect', 'abort')
             )
             await Promise.all([
-              postMessageTransport.disconnect(),
-              // p2pTransport.disconnect(), do not abort connection manually
-              walletConnectTransport?.disconnect()
+              walletConnectTransport?.disconnect(),
+              // Disconnects postMessage and P2P -- `postMessageTransport` above
+              // is this.postMessageTransport, so dropTransports() already owns
+              // it -- and forgets all three. It also stops the P2P client
+              // started for the pairing QR: if its start is still pending,
+              // P2PCommunicationClient.start() notices the stop once the login
+              // completes and shuts it down.
+              this.dropTransports()
             ])
-            this.postMessageTransport = this.walletConnectTransport = this.p2pTransport = undefined
             this._activeAccount.isResolved() && this.clearActiveAccount()
 
             this.events.emit(BeaconEvent.PAIR_ABORTED).catch((emitError) => console.warn(emitError))
@@ -1118,11 +1151,8 @@ export class DAppClient extends Client {
     this.storage.set(StorageKey.ACTIVE_ACCOUNT, undefined)
     emit && this.events.emit(BeaconEvent.INVALID_ACTIVE_ACCOUNT_STATE)
     !emit && this.hideUI(['alert'])
-    await Promise.all([
-      this.postMessageTransport?.disconnect(),
-      this.walletConnectTransport?.disconnect()
-    ])
-    this.postMessageTransport = this.p2pTransport = this.walletConnectTransport = undefined
+    const walletConnectTransport = this.walletConnectTransport
+    await Promise.all([walletConnectTransport?.disconnect(), this.dropTransports()])
     await this.setActivePeer(undefined)
     await this.setTransport(undefined)
     this._initPromise = undefined
@@ -1163,7 +1193,7 @@ export class DAppClient extends Client {
       if (!this.debounceSetActiveAccount && transport instanceof WalletConnectTransport) {
         this.debounceSetActiveAccount = true
         this._initPromise = undefined
-        this.postMessageTransport = this.p2pTransport = this.walletConnectTransport = undefined
+        await this.dropTransports()
         if (this.multiTabChannel.isLeader() || isMobileOS(window)) {
           await transport.disconnect()
           this.openRequestsOtherTabs.clear()
@@ -2447,9 +2477,7 @@ export class DAppClient extends Client {
         (await this.getActiveAccount()) === undefined
       ) {
         this._initPromise = undefined
-        this.postMessageTransport = undefined
-        this.p2pTransport = undefined
-        this.walletConnectTransport = undefined
+        await this.dropTransports()
         await this.setTransport()
         await this.setActivePeer()
       }
@@ -3317,20 +3345,11 @@ export class DAppClient extends Client {
 
     await this.clearActiveAccount()
     if (!(transport instanceof WalletConnectTransport)) {
-      try {
-        await transport.disconnect()
-      } catch (disconnectError) {
-        const message = disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
-        if (typeof message === 'string' && message.includes('Syncing stopped manually')) {
-          logger.log('disconnect', 'Matrix sync stopped manually')
-        } else {
-          throw disconnectError
-        }
-      }
+      await transport.disconnect()
     }
-    this.postMessageTransport = undefined
-    this.p2pTransport = undefined
-    this.walletConnectTransport = undefined
+    // The active transport is already disconnected above; this stops the
+    // other one (a second disconnect is a no-op) and drops the instances.
+    await this.dropTransports()
 
     await this.setTransport()
     this._initPromise = undefined
