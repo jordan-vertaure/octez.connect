@@ -267,7 +267,7 @@ export abstract class Client extends BeaconClient {
         return
       }
 
-      const peer = await this.findPeer(connectionInfo.id)
+      const peer = await this.findPeer(connectionInfo.id, transport)
       const protocolVersion = this.getPeerProtocolVersion(peer)
 
       const deserializedMessage = (await new Serializer(protocolVersion).deserialize(
@@ -297,13 +297,27 @@ export abstract class Client extends BeaconClient {
     await selectedTransport.send(payload, peer)
   }
 
-  protected async findPeer(publicKey?: string): Promise<PeerInfo | undefined> {
+  /**
+   * Look a peer up by public key, on the transport that delivered the message.
+   *
+   * The transport is a parameter rather than a lookup because every caller
+   * already has one: a message can only have been delivered by a transport
+   * that exists. Reaching for `this.transport` instead parked every arrival
+   * between a disconnection and the next pairing -- setTransport(undefined)
+   * leaves `_transport` unsettled, so the await only returned once a later
+   * pairing resolved it, and the message was replayed into that connection.
+   */
+  protected async findPeer(
+    publicKey: string | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transport: Transport<any>
+  ): Promise<PeerInfo | undefined> {
     if (!publicKey) {
       return undefined
     }
 
-    const transport = await this.transport
     const peers = await transport.getPeers()
+
     return peers.find((peerInfo) => peerInfo.publicKey === publicKey)
   }
 

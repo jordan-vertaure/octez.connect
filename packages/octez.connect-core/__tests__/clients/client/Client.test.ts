@@ -1,0 +1,120 @@
+import {
+  BeaconMessageType,
+  ConnectionContext,
+  Origin,
+  TransportType
+} from '@tezos-x/octez.connect-types'
+import { Client } from '../../../src/clients/client/Client'
+import { Serializer } from '../../../src/Serializer'
+import { Transport } from '../../../src/transports/Transport'
+import { MockStorage } from './MockStorage'
+
+/** `Client` is abstract only in name; nothing needs implementing to instantiate it. */
+class TestClient extends Client {
+  public readonly handled: unknown[] = []
+
+  constructor() {
+    super({ name: 'test-client', storage: new MockStorage() })
+    this.handleResponse = async (message) => {
+      this.handled.push(message)
+    }
+  }
+}
+
+const PEER = {
+  publicKey: 'wallet-public-key',
+  senderId: 'wallet-sender-id',
+  name: 'wallet',
+  version: '4'
+}
+
+type Listener = (message: unknown, connectionInfo: ConnectionContext) => Promise<void>
+
+/** Enough of a Transport for `Client` to subscribe to and read peers from. */
+const fakeTransport = (type: TransportType = TransportType.POST_MESSAGE) => {
+  const listeners: Listener[] = []
+  const transport = {
+    type,
+    listeners,
+    getPeers: async () => [PEER],
+    addListener: async (listener: Listener) => {
+      listeners.push(listener)
+    },
+    removeListener: async (listener: Listener) => {
+      const index = listeners.indexOf(listener)
+      if (index >= 0) {
+        listeners.splice(index, 1)
+      }
+    }
+  }
+
+  return transport as typeof transport & Transport
+}
+
+/** The protected surface under test. */
+interface ClientInternals {
+  addListener: (transport: Transport) => Promise<void>
+  setTransport: (transport?: Transport) => Promise<void>
+  findPeer: (publicKey: string | undefined, transport: Transport) => Promise<unknown>
+  cleanup: () => Promise<void>
+}
+
+const internals = (client: Client) => client as unknown as ClientInternals
+
+const PARKED = Symbol('parked')
+
+/** Resolves to PARKED if `promise` has not settled within 50ms. */
+const settledOrParked = <T>(promise: Promise<T>) =>
+  Promise.race([
+    promise,
+    new Promise<typeof PARKED>((resolve) => setTimeout(() => resolve(PARKED), 50))
+  ])
+
+describe('Client transport subscriptions', () => {
+  describe('findPeer', () => {
+    it('resolves the peer on the transport that delivered the message', async () => {
+      const client = internals(new TestClient())
+      const transport = fakeTransport()
+
+      await client.addListener(transport)
+
+      await expect(client.findPeer(PEER.publicKey, transport)).resolves.toEqual(PEER)
+    })
+
+    it('finds nothing without an id, without touching the transport', async () => {
+      const client = internals(new TestClient())
+      const transport = fakeTransport()
+      const getPeers = jest.spyOn(transport, 'getPeers')
+
+      await expect(client.findPeer(undefined, transport)).resolves.toBeUndefined()
+      expect(getPeers).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('subscription', () => {
+    it('handles a message delivered while no transport is resolved', async () => {
+      const client = new TestClient()
+      const transport = fakeTransport()
+
+      await internals(client).addListener(transport)
+      // Subscribed, but `_transport` was never resolved -- the state between a
+      // disconnection and the next pairing. The wallet's echoed `disconnect`
+      // arrives here.
+      const payload = await new Serializer().serialize({
+        id: 'message-id',
+        version: '2',
+        senderId: PEER.senderId,
+        type: BeaconMessageType.Disconnect
+      })
+
+      const delivered = transport.listeners[0](payload, {
+        origin: Origin.EXTENSION,
+        id: PEER.publicKey
+      })
+
+      await expect(settledOrParked(delivered)).resolves.toBeUndefined()
+      expect(client.handled).toHaveLength(1)
+      expect(client.handled[0]).toMatchObject({ type: BeaconMessageType.Disconnect })
+    })
+  })
+})
